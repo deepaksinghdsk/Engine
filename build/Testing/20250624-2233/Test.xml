@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Site BuildName="Win32-MSBuild"
+	BuildStamp="20250624-2233-Experimental"
+	Name="Deepak"
+	Generator="ctest-4.0.3"
+	CompilerName="C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.33.31629/bin/Hostx64/x64/cl.exe"
+	CompilerVersion="19.33.31630.0"
+	OSName="Windows"
+	Hostname="Deepak"
+	OSRelease=" Personal"
+	OSVersion=" (Build 26100)"
+	OSPlatform="AMD64"
+	Is64Bits="1"
+	VendorString="AuthenticAMD"
+	VendorID="Advanced Micro Devices"
+	FamilyID="15"
+	ModelID="0"
+	ModelName="AMD Ryzen 5 5600H with Radeon Graphics         "
+	ProcessorCacheSize="64"
+	NumberOfLogicalCPU="12"
+	NumberOfPhysicalCPU="6"
+	TotalVirtualMemory="17249"
+	TotalPhysicalMemory="7521"
+	LogicalProcessorsPerPhysical="2"
+	ProcessorClockFrequency="3293"
+	>
+	<Testing>
+		<StartDateTime>Aug 10 13:34 India Standard Time</StartDateTime>
+		<StartTestTime>1754813040</StartTestTime>
+		<TestList/>
+		<EndDateTime>Aug 10 13:34 India Standard Time</EndDateTime>
+		<EndTestTime>1754813040</EndTestTime>
+		<ElapsedMinutes>0</ElapsedMinutes>
+	</Testing>
+</Site>

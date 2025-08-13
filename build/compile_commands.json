@@ -1,0 +1,7 @@
+[
+{
+  "directory": "D:/Dev/Graphics Proj/Engine/build",
+  "command": "C:\\msys64\\mingw64\\bin\\g++.exe  @CMakeFiles/VulkanEngine.dir/includes_CXX.rsp  -O2 -g -std=gnu++17 -o CMakeFiles\\VulkanEngine.dir\\src\\Engine.cpp.obj -c \"D:\\Dev\\Graphics Proj\\Engine\\src\\Engine.cpp\"",
+  "file": "D:/Dev/Graphics Proj/Engine/src/Engine.cpp"
+}
+]

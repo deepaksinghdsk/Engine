@@ -1,0 +1,10 @@
+^D:\DEV\GRAPHICS PROJ\ENGINE\BUILD\CMAKEFILES\45B78BBBA1080913D2B80F0BD9D2F67D\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SD:/Dev/Graphics Proj/Engine" "-BD:/Dev/Graphics Proj/Engine/build" --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file "D:/Dev/Graphics Proj/Engine/build/VulkanEngine.sln"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

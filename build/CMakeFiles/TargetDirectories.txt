@@ -1,0 +1,10 @@
+D:/Dev/Graphics Proj/Engine/build/CMakeFiles/Experimental.dir
+D:/Dev/Graphics Proj/Engine/build/CMakeFiles/Nightly.dir
+D:/Dev/Graphics Proj/Engine/build/CMakeFiles/Continuous.dir
+D:/Dev/Graphics Proj/Engine/build/CMakeFiles/NightlyMemoryCheck.dir
+D:/Dev/Graphics Proj/Engine/build/CMakeFiles/VulkanEngine.dir
+D:/Dev/Graphics Proj/Engine/build/CMakeFiles/test1.dir
+D:/Dev/Graphics Proj/Engine/build/CMakeFiles/clean-custom.dir
+D:/Dev/Graphics Proj/Engine/build/CMakeFiles/RUN_TESTS.dir
+D:/Dev/Graphics Proj/Engine/build/CMakeFiles/ALL_BUILD.dir
+D:/Dev/Graphics Proj/Engine/build/CMakeFiles/ZERO_CHECK.dir

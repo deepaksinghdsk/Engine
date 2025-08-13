@@ -1,0 +1,45 @@
+cmake_minimum_required(VERSION 3.10)
+project(VulkanEngine VERSION 0.1.0 LANGUAGES C CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
+
+include(CTEST)
+enable_testing()
+
+find_package(Vulkan REQUIRED)
+
+# include paths
+set(GLFW_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/dependencies/GLFW/include/")
+#set(VULKAN_INCLUDE_DIR "D:/VulkanSDK/1.3.268.0/Include/")
+set(GLFW_LIB_PATH "${CMAKE_SOURCE_DIR}/dependencies/GLFW/lib-vc2022/glfw3.lib")
+message(STATUS "GLFW LIB path: ${GLFW_LIB_PATH}")
+
+set(GLM_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/src/thirdParty/glm-0.9.9.8/")
+set(THIRDPARTY_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/src/thirdParty/")
+
+add_definitions(-DGLFW_STATIC)
+
+include_directories(${GLFW_INCLUDE_DIR})
+#include_directories(${VULKAN_INCLUDE_DIR})
+include_directories(${GLM_INCLUDE_DIR})
+include_directories(${THIRDPARTY_INCLUDE_DIR})
+
+add_executable(VulkanEngine src/Engine.cpp)
+target_link_libraries(VulkanEngine
+    Vulkan::Vulkan
+    ${GLFW_LIB_PATH}
+)
+
+# Add test target
+add_custom_target(test1
+    COMMAND VulkanTest
+    DEPENDS VulkanTest
+    COMMENT "Running VulkanTest"
+)
+
+# Add custom clean
+add_custom_target(clean-custom
+    COMMAND ${CMAKE_COMMAND} -E remove VulkanTest.exe
+    COMMENT "Cleaning VulkanTest binary"
+)

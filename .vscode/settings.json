@@ -78,5 +78,6 @@
         "xtree": "cpp",
         "xutility": "cpp",
         "engine backup": "cpp"
-    }
+    },
+    "C_Cpp.errorSquiggles": "enabled"
 }

@@ -1,12 +1,14 @@
 #pragma once
 
 #include <stdlib.h>
+#include <stdexcept>
 #include <string>
 #include <assert.h>
 #include <stdio.h>
 #include <vector>
 
 #include <vulkan/vulkan.h>
+#include <GLFW/glfw3.h>
 
 class VulkanSwapChain
 {
@@ -17,13 +19,18 @@ private:
     VkSurfaceKHR surface{VK_NULL_HANDLE};
 
 public:
-    VkSwapchainKHR swapChain{VK_NULL_HANDLE};
+    VkSwapchainKHR swapChain{VK_NULL_HANDLE};   
+    VkFormat colorFormat;
+    VkColorSpaceKHR colorSpace;
+    std::vector<VkPresentModeKHR> presentModes;
+    uint32_t imageCount{0};
     std::vector<VkImage> images{};
     std::vector<VkImageView> imageViews{};
-    uint32_t imageCount{0};
 
     void setContext(VkInstance instance, VkDevice device, VkPhysicalDevice physicalDevice);
-    void initSurface();
-    void createSwapChain();
+    void initSurface(GLFWwindow *window);
+    void create(int width, int height);
+    VkResult aquireNextImage();
+    VkResult queuePresent();
     void cleanup();
 };

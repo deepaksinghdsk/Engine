@@ -1,6 +1,8 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 #include <String>
+#include <iostream>
+#include <optional>
 
 struct VulkanDevice
 {
@@ -23,10 +25,15 @@ struct VulkanDevice
 	/** @brief Contains queue family indices */
 	struct
 	{
-		uint32_t graphics;
-        uint32_t present;
+		std::optional<uint32_t> graphics;
+        //std::optional<uint32_t> present;
 		uint32_t compute;
 		uint32_t transfer;
+
+        bool isComplete()
+        {
+            return graphics.has_value();
+        }
 	} queueFamilyIndices;
     
     operator VkDevice() const
@@ -34,5 +41,7 @@ struct VulkanDevice
         return logicalDevice;
     }
     explicit VulkanDevice(VkPhysicalDevice physicalDevice);
-    VkResult createLogicalDevice(VkPhysicalDeviceFeatures enabledFeatures, std::vector<const char*> enabledExtensions, bool useSwapChain);
+    ~VulkanDevice();
+    VkResult createLogicalDevice(VkPhysicalDeviceFeatures enabledFeatures, std::vector<const char*> enabledExtensions, bool useSwapChain = true);
+    void findQueueFamilies(VkPhysicalDevice device);
 };

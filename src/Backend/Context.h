@@ -28,6 +28,7 @@
 #include <set>
 
 #include "VulkanDevice.h"
+#include "VulkanSwapChain.h"
 
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
@@ -69,7 +70,9 @@ private:
     VkDebugUtilsMessengerEXT debugMessenger;
 
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-    VulkanDevice *vulkanDevice;
+    VulkanDevice vulkanDevice;
+    VulkanSwapChain *vulkanSwapChain;
+    VkQueue graphicsQueue, presentQueue;
 
 
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData)

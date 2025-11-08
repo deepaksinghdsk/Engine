@@ -24,13 +24,16 @@ VulkanDevice::VulkanDevice(VkPhysicalDevice physicalDevice)
     if (extCount > 0)
     {
         std::vector<VkExtensionProperties> extensions(extCount);
-        if (vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extCount, extensions.data()))
+        if (vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extCount, extensions.data()) == VK_SUCCESS)
         {
             for (auto &ext : extensions)
             {
+                //std::cout<<"ext: "<<ext.extensionName<<std::endl;
                 supportedExtensions.push_back(ext.extensionName);
             }
         }
+        else 
+            std::cout<<"returned false"<<std::endl;
     }
 }
 
@@ -72,16 +75,14 @@ VkResult VulkanDevice::createLogicalDevice(VkPhysicalDeviceFeatures enabledFeatu
 
     VkDeviceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    createInfo.pNext = NULL;
     createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
     createInfo.pQueueCreateInfos = queueCreateInfos.data();
     createInfo.pEnabledFeatures = &deviceFeatures;
     createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
     createInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
-    if(vkCreateDevice(physicalDevice, &createInfo, nullptr, &logicalDevice) != VK_SUCCESS)
-    {
-        throw std::runtime_error("failed to create logical device");
-    }
+    return vkCreateDevice(physicalDevice, &createInfo, nullptr, &logicalDevice);
 }
 
 void VulkanDevice::findQueueFamilies(VkPhysicalDevice device)

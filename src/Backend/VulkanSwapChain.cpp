@@ -1,4 +1,5 @@
 #include "VulkanSwapChain.h"
+#include <algorithm>
 
 void VulkanSwapChain::setContext(VkInstance instance, VkDevice device, VkPhysicalDevice physicalDevice)
 {
@@ -128,15 +129,15 @@ void VulkanSwapChain::create(int width, int height)
     }
 }
 
-VkResult VulkanSwapChain::aquireNextImage()
+/* VkResult VulkanSwapChain::aquireNextImage()
 {
-
+    return;
 }
 
 VkResult VulkanSwapChain::queuePresent()
-{
-    
-}
+{   
+    return;
+} */
 
 void VulkanSwapChain::cleanup()
 {

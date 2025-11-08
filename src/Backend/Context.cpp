@@ -1,20 +1,33 @@
 #include "Context.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
+#define GLFW_INCLUDE_VULKAN
+// #define GLFW_STATIC
+#include <GLFW/glfw3.h>
+
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
 Context::Context()
 {
-    //setup window
+    // setup window
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     window = glfwCreateWindow(width, height, "Vulkan", nullptr, nullptr);
     glfwSetWindowUserPointer(window, this);
-    //glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+    // glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
 
     initVulkan();
+    vulkanSwapChain.setContext(instance, device, physicalDevice);
 }
 
 Context::~Context()
 {
-    if(enableValidationLayers)
+    if (enableValidationLayers)
     {
         DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
     }
@@ -26,6 +39,7 @@ Context::~Context()
 void Context::initVulkan()
 {
     createInstance();
+
     if (enableValidationLayers)
     {
         CreateDebugUtilsMessengerEXT = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
@@ -49,7 +63,7 @@ void Context::initVulkan()
     vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
     for (const auto &device : devices)
     {
-        if (isDeviceSuitable(device))
+        //if (isDeviceSuitable(device))
         {
             physicalDevice = device;
             break;
@@ -62,6 +76,60 @@ void Context::initVulkan()
 
     createLogicalDevice();
 }
+
+void Context::setupDebugMessenger()
+{
+    if (!enableValidationLayers)
+        return;
+
+    VkDebugUtilsMessengerCreateInfoEXT createInfo;
+    createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    createInfo.pfnUserCallback = debugCallback;
+
+    if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to set up debug messenger!");
+    }
+}
+
+/* bool Context::isDeviceSuitable(VkPhysicalDevice device)
+{
+    //QueueFamilyIndices indices = findQueueFamilies(device);
+
+    bool extensionsSupported = checkDeviceExtensionSupport(device);
+
+    bool swapChainAdequate = false;
+    if (extensionsSupported)
+    {
+        SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
+        swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
+    }
+
+    VkPhysicalDeviceFeatures supportedFeatures;
+    vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
+
+    return extensionsSupported && swapChainAdequate && supportedFeatures.samplerAnisotropy;
+} */
+
+/* bool Context::checkDeviceExtensionSupport(VkPhysicalDevice device)
+{
+    uint32_t extensionCount;
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
+
+    std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
+
+    std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
+
+    for (const auto &extension : availableExtensions)
+    {
+        requiredExtensions.erase(extension.extensionName);
+    }
+
+    return requiredExtensions.empty();
+} */
 
 // Creation of Instance
 void Context::createInstance()
@@ -87,12 +155,12 @@ void Context::createInstance()
     createInfo.enabledExtensionCount = static_cast<uint32_t>(enabledInstanceExtensions.size());
     createInfo.ppEnabledExtensionNames = enabledInstanceExtensions.data();
 
-    //enabling validation layer for create and destroy Instance function calls
+    // enabling validation layer for create and destroy Instance function calls
     if (enableValidationLayers)
     {
         createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
         createInfo.ppEnabledLayerNames = validationLayers.data();
-        
+
         VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
         debugCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
         debugCreateInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
@@ -116,36 +184,11 @@ void Context::createInstance()
 void Context::requiredExtensions()
 {
     uint32_t glfwExtensionCount = 0;
-    const char **glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+    const char **glfwExtensions;
+    glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+
     std::copy(glfwExtensions, glfwExtensions + glfwExtensionCount, std::back_inserter(enabledInstanceExtensions));
-    if (enableValidationLayers)
-    {
-        enabledInstanceExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-    }
-
-    //check if all the required extensions are supported
-    uint32_t extensionCount = 0;
-    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
-    std::vector<VkExtensionProperties> extensionProperties(extensionCount);
-    for(const char* extension : enabledInstanceExtensions)
-    {
-        bool found = false;
-        for(VkExtensionProperties properties : extensionProperties)
-        {
-            if(std::strcmp(properties.extensionName, extension) == 0)
-            {
-                found = true;
-                break;
-            }
-        }
-
-        if(!found)
-        {
-            std::stringstream ss;
-            ss <<"Required extension: " << extension << " is not supported";
-            throw std::runtime_error(ss.str());
-        }
-    }
+    enabledInstanceExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 }
 
 bool Context::checkValidationLayerSupport()
@@ -159,6 +202,7 @@ bool Context::checkValidationLayerSupport()
     for (const char *layerName : validationLayers)
     {
         bool layerFound = false;
+
         for (const auto &layerProperties : availableLayers)
         {
             if (strcmp(layerName, layerProperties.layerName) == 0)
@@ -167,6 +211,7 @@ bool Context::checkValidationLayerSupport()
                 break;
             }
         }
+
         if (!layerFound)
         {
             return false;
@@ -176,39 +221,26 @@ bool Context::checkValidationLayerSupport()
     return true;
 }
 
-// Setting up Debug Messenger
-void Context::setupDebugMessenger()
+// Surface creation functions
+void Context::createSurface()
 {
-    VkDebugUtilsMessengerCreateInfoEXT createInfo = {};
-    createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-    createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-    createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-    createInfo.pfnUserCallback = debugCallback;
-
-    if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS)
-    {
-        throw std::runtime_error("failed to set up debug messenger!");
-    }
+    vulkanSwapChain.initSurface(window);
 }
 
-// Surface creation functions
-void createSurface()
+void Context::createSwapchain()
 {
-    vulkanSwapChain.initSurface(&window);
-    if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS)
-    {
-        throw std::runtime_error("failed to create window surface!");
-    }
+    vulkanSwapChain.create(width, height);
 }
 
 // Logical Device Creation
 void Context::createLogicalDevice()
 {
+    std::cout << "Createing LD" << std::endl;
     vulkanDevice = new VulkanDevice(physicalDevice);
     VkResult result = vulkanDevice->createLogicalDevice(enabledFeatures, enabledDeviceExtensions);
-    if(result != VK_SUCCESS)
+    if (result != VK_SUCCESS)
     {
-        std::cerr<<"Unable to create Logical device";
+        std::cerr << "Unable to create Logical device";
     }
 
     device = vulkanDevice->logicalDevice;
@@ -216,8 +248,3 @@ void Context::createLogicalDevice()
     // Get a graphics queue from the device
     vkGetDeviceQueue(device, vulkanDevice->queueFamilyIndices.graphics.value(), 0, &graphicsQueue);
 }
-
-
-
-
-

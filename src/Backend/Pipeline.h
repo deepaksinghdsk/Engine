@@ -8,6 +8,7 @@ public:
 
 private:
     VkDevice device;
+    VkPipelineLayout pipelineLayout;
 
     void init();
     std::vector<char> readfile(char* fileloc);

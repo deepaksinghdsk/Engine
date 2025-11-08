@@ -86,7 +86,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;D:\Dev\Graphics Proj\Engine\src;D:\Dev\Graphics Proj\Engine\app\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /external:I "D:/VulkanSDK/1.3.268.0/include"</AdditionalOptions>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -109,10 +109,10 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_DEBUG;_WINDOWS;GLFW_STATIC;CMAKE_INTDIR=\"Debug\"</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;D:\VulkanSDK\1.3.268.0\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;D:\Dev\Graphics Proj\Engine\src;D:\Dev\Graphics Proj\Engine\app\src;D:\VulkanSDK\1.3.268.0\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;D:\VulkanSDK\1.3.268.0\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;D:\Dev\Graphics Proj\Engine\src;D:\Dev\Graphics Proj\Engine\app\src;D:\VulkanSDK\1.3.268.0\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -135,7 +135,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;D:\Dev\Graphics Proj\Engine\src;D:\Dev\Graphics Proj\Engine\app\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /external:I "D:/VulkanSDK/1.3.268.0/include"</AdditionalOptions>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
@@ -159,10 +159,10 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;GLFW_STATIC;CMAKE_INTDIR=\"Release\"</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;D:\VulkanSDK\1.3.268.0\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;D:\Dev\Graphics Proj\Engine\src;D:\Dev\Graphics Proj\Engine\app\src;D:\VulkanSDK\1.3.268.0\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;D:\VulkanSDK\1.3.268.0\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;D:\Dev\Graphics Proj\Engine\src;D:\Dev\Graphics Proj\Engine\app\src;D:\VulkanSDK\1.3.268.0\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -185,7 +185,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;D:\Dev\Graphics Proj\Engine\src;D:\Dev\Graphics Proj\Engine\app\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /external:I "D:/VulkanSDK/1.3.268.0/include"</AdditionalOptions>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
@@ -209,10 +209,10 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;GLFW_STATIC;CMAKE_INTDIR=\"MinSizeRel\"</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;D:\VulkanSDK\1.3.268.0\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;D:\Dev\Graphics Proj\Engine\src;D:\Dev\Graphics Proj\Engine\app\src;D:\VulkanSDK\1.3.268.0\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;D:\VulkanSDK\1.3.268.0\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;D:\Dev\Graphics Proj\Engine\src;D:\Dev\Graphics Proj\Engine\app\src;D:\VulkanSDK\1.3.268.0\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -235,7 +235,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;D:\Dev\Graphics Proj\Engine\src;D:\Dev\Graphics Proj\Engine\app\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /external:I "D:/VulkanSDK/1.3.268.0/include"</AdditionalOptions>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
@@ -258,10 +258,10 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_WINDOWS;NDEBUG;GLFW_STATIC;CMAKE_INTDIR=\"RelWithDebInfo\"</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;D:\VulkanSDK\1.3.268.0\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;D:\Dev\Graphics Proj\Engine\src;D:\Dev\Graphics Proj\Engine\app\src;D:\VulkanSDK\1.3.268.0\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;D:\VulkanSDK\1.3.268.0\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\Dev\Graphics Proj\Engine\dependencies\GLFW\include;D:\Dev\Graphics Proj\Engine\src\thirdParty\glm-0.9.9.8;D:\Dev\Graphics Proj\Engine\src\thirdParty;D:\Dev\Graphics Proj\Engine\src;D:\Dev\Graphics Proj\Engine\app\src;D:\VulkanSDK\1.3.268.0\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -340,7 +340,11 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     </CustomBuild>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="D:\Dev\Graphics Proj\Engine\src\Engine.cpp" />
+    <ClCompile Include="D:\Dev\Graphics Proj\Engine\app\src\sandbox.cpp" />
+    <ClCompile Include="D:\Dev\Graphics Proj\Engine\src\Backend\Application.cpp" />
+    <ClCompile Include="D:\Dev\Graphics Proj\Engine\src\Backend\Context.cpp" />
+    <ClCompile Include="D:\Dev\Graphics Proj\Engine\src\Backend\VulkanSwapChain.cpp" />
+    <ClCompile Include="D:\Dev\Graphics Proj\Engine\src\Backend\VulkanDevice.cpp" />
   </ItemGroup>
   <ItemGroup />
   <ItemGroup>

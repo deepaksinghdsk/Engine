@@ -23,9 +23,21 @@ add_definitions(-DGLFW_STATIC)
 include_directories(${GLFW_INCLUDE_DIR})
 #include_directories(${VULKAN_INCLUDE_DIR})
 include_directories(${GLM_INCLUDE_DIR})
-include_directories(${THIRDPARTY_INCLUDE_DIR})
+include_directories(${THIRDPARTY_INCLUDE_DIR}) 
 
-add_executable(VulkanEngine src/Engine.cpp)
+add_executable(VulkanEngine 
+                    app/src/sandbox.cpp
+                    src/Backend/Application.cpp
+                    src/Backend/Context.cpp
+                    src/Backend/VulkanSwapChain.cpp
+                    src/Backend/VulkanDevice.cpp
+)
+
+target_include_directories(VulkanEngine PRIVATE
+                    ${CMAKE_CURRENT_SOURCE_DIR}/src/
+                    ${CMAKE_CURRENT_SOURCE_DIR}/app/src/
+) 
+
 target_link_libraries(VulkanEngine
     Vulkan::Vulkan
     ${GLFW_LIB_PATH}

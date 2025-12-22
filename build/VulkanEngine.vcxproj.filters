@@ -16,6 +16,18 @@
     <ClCompile Include="D:\Dev\Graphics Proj\Engine\src\Backend\VulkanDevice.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="D:\Dev\Graphics Proj\Engine\src\Backend\Pipeline.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Dev\Graphics Proj\Engine\src\Backend\CommandBuffer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Dev\Graphics Proj\Engine\src\Backend\Buffer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Dev\Graphics Proj\Engine\src\Backend\RenderPass.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="D:\Dev\Graphics Proj\Engine\CMakeLists.txt" />

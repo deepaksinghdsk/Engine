@@ -1,13 +1,16 @@
+#pragma once
 #include "Context.h"
 
 class RenderPass
 {
 public:
-    RenderPass(Context &context);
+    VkRenderPass renderPass = nullptr;
+    VulkanSwapChain vulkanSwapchain;
+    
+    RenderPass(Context &context, VulkanSwapChain &swapchain);
     ~RenderPass();
 
 private:
-    VkRenderPass renderPass;
     Context &context;
     
     void init();

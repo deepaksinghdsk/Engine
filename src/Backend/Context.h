@@ -50,61 +50,60 @@ class Context
 {
 public:
     VkDevice device;
-    VulkanSwapChain vulkanSwapChain;
+    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+    VkInstance instance;
+    VulkanDevice *vulkanDevice;
+    GLFWwindow *window;
+    VkQueue graphicsQueue, presentQueue;
+    VkSurfaceKHR surface;
+
+    bool framebufferResized = false;
 
 private:
-    VkInstance instance;
-    VkSurfaceKHR surface;
-    GLFWwindow *window;
+    Context(const Context &other) = delete;
+    Context(const Context &&other) = delete;
     
     PFN_vkCreateDebugUtilsMessengerEXT CreateDebugUtilsMessengerEXT;
     PFN_vkDestroyDebugUtilsMessengerEXT DestroyDebugUtilsMessengerEXT;
     VkDebugUtilsMessengerEXT debugMessenger;
-    
-    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-    VulkanDevice *vulkanDevice;
-    VkQueue graphicsQueue, presentQueue;
-    
-    
+
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData)
     {
         std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
         // debugMessenger
         return VK_FALSE;
     }
-    
-    Context(const Context &other) = delete;
-    Context(const Context &&other) = delete;
-    
+
     Context &operator=(const Context &other) = delete;
     Context &operator=(const Context &&other) = delete;
-    
-protected:
+
     const std::vector<const char *> validationLayers = {
         "VK_LAYER_KHRONOS_validation"};
-        std::vector<const char *> enabledInstanceExtensions;
-        std::vector<const char *> enabledDeviceExtensions;
-        VkPhysicalDeviceFeatures enabledFeatures{};
-        
-        public:
-        uint32_t width = 1280;
-        uint32_t height = 720;
-        
-        Context();
-        ~Context();
-        
-        void initVulkan();
-        //std::vector<const char *> setupExtensions();
-        void createInstance();
-        void requiredExtensions();
-        void createSurface();
-        void createSwapchain();
-        void pickPhysicalDevice();
-        bool isDeviceSuitable(VkPhysicalDevice device);
-        bool checkDeviceExtensionSupport(VkPhysicalDevice device);
-        SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
-        void createLogicalDevice();
-        QueueFamilyIndices Context::findQueueFamilies(VkPhysicalDevice device);
-        void setupDebugMessenger();
-        bool checkValidationLayerSupport();
-    };
+    std::vector<const char *> enabledInstanceExtensions;
+    std::vector<const char *> enabledDeviceExtensions;
+    VkPhysicalDeviceFeatures enabledFeatures{};
+
+public:
+    uint32_t width = 1280;
+    uint32_t height = 720;
+
+    Context();
+    ~Context();
+
+    static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
+
+    void initVulkan();
+    // std::vector<const char *> setupExtensions();
+    void createInstance();
+    void requiredExtensions();
+    void createSurface();
+    void createSwapchain();
+    void pickPhysicalDevice();
+    bool isDeviceSuitable(VkPhysicalDevice device);
+    bool checkDeviceExtensionSupport(VkPhysicalDevice device);
+    SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
+    void createLogicalDevice();
+    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
+    void setupDebugMessenger();
+    bool checkValidationLayerSupport();
+};

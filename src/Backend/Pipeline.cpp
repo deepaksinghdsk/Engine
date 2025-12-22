@@ -2,22 +2,24 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include "Application.h"
 
-Pipeline::Pipeline(VkDevice device) : device(device)
+Pipeline::Pipeline(VkDevice &device, VkRenderPass renderpass, VkExtent2D extent) : device(device)
 {
-    init();
+    init(&renderpass, extent);
 }
 
 Pipeline::~Pipeline()
 {
+    vkDestroyPipeline(device, pipeline, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
 }
 
-void Pipeline::init()
+void Pipeline::init(VkRenderPass *renderPass, VkExtent2D swapchainExtent)
 {
     //Fragment and vertex shader loading
-    auto vertexShadercode = readfile("././res/shaders/vert.spv");
-    auto fragShadercode = readfile("././res/shaders/frag.spv");
+    auto vertexShadercode = readfile("D:/Dev/Graphics Proj/Engine/res/shaders/vert.spv");
+    auto fragShadercode = readfile("D:/Dev/Graphics Proj/Engine/res/shaders/frag.spv");
     VkShaderModule vertShaderModule = createShaderModule(vertexShadercode);
     VkShaderModule fragShaderModule = createShaderModule(fragShadercode);
     VkPipelineShaderStageCreateInfo vertShaderCI{};
@@ -26,20 +28,23 @@ void Pipeline::init()
     vertShaderCI.module = vertShaderModule;
     vertShaderCI.pName = "main";
     VkPipelineShaderStageCreateInfo fragShaderCI{};
-    vertShaderCI.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    vertShaderCI.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    vertShaderCI.module = fragShaderModule;
-    vertShaderCI.pName = "main";
+    fragShaderCI.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    fragShaderCI.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    fragShaderCI.module = fragShaderModule;
+    fragShaderCI.pName = "main";
 
-    VkPipelineShaderStageCreateInfo shaderStage[] = {vertShaderCI, fragShaderCI};
+    VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderCI, fragShaderCI};
 
     //VertexInput
+    auto bindingDescription = Vertex::getBindingDescription();
+    auto attributDescriptions = Vertex::getAttributeDescriptions();
+
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertexInputInfo.vertexBindingDescriptionCount = 0;
-    vertexInputInfo.pVertexBindingDescriptions = nullptr;
-    vertexInputInfo.vertexAttributeDescriptionCount = 0;
-    vertexInputInfo.pVertexAttributeDescriptions = nullptr;
+    vertexInputInfo.vertexBindingDescriptionCount = 1;
+    vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+    vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributDescriptions.size());
+    vertexInputInfo.pVertexAttributeDescriptions = attributDescriptions.data();
 
     //InputAssembly
     VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo{};
@@ -57,6 +62,25 @@ void Pipeline::init()
     dynamicstate.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
     dynamicstate.dynamicStateCount = dynamicStates.size();
     dynamicstate.pDynamicStates = dynamicStates.data();
+
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = (float) swapchainExtent.width;
+    viewport.height = (float) swapchainExtent.height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    VkRect2D scissor{};
+    scissor.offset = {0, 0};
+    scissor.extent = swapchainExtent;
+
+    VkPipelineViewportStateCreateInfo viewportState{};
+    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewportState.viewportCount = 1;
+    viewportState.pViewports = &viewport;
+    viewportState.scissorCount = 1;
+    viewportState.pScissors = &scissor;
     
     //Rasterizer
     VkPipelineRasterizationStateCreateInfo rasterizer{};
@@ -119,8 +143,34 @@ void Pipeline::init()
         throw std::runtime_error("failed to create pipeline layout!");
     }
 
+    VkGraphicsPipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipelineInfo.stageCount = 2;
+    pipelineInfo.pStages = shaderStages;
 
+    pipelineInfo.pVertexInputState = &vertexInputInfo;
+    pipelineInfo.pInputAssemblyState = &inputAssemblyInfo;
+    pipelineInfo.pViewportState = &viewportState;
+    pipelineInfo.pRasterizationState = &rasterizer;
+    pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pDepthStencilState = nullptr; // Optional
+    pipelineInfo.pColorBlendState = &colorBlending;
+    pipelineInfo.pDynamicState = &dynamicstate;
 
+    pipelineInfo.layout = pipelineLayout;
+
+    pipelineInfo.renderPass = *renderPass;
+    pipelineInfo.subpass = 0;
+
+    pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
+    pipelineInfo.basePipelineIndex = -1; // Optional
+
+    if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS)
+        throw std::runtime_error("failed to create graphics pipeline!");
+
+    
+    vkDestroyShaderModule(device, fragShaderModule, nullptr);
+    vkDestroyShaderModule(device, vertShaderModule, nullptr);
 }
 
 

@@ -1,7 +1,8 @@
 #include "VulkanDevice.h"
+#include "Context.h"
 #include <assert.h>
 
-VulkanDevice::VulkanDevice(VkPhysicalDevice physicalDevice)
+VulkanDevice::VulkanDevice(VkPhysicalDevice physicalDevice, Context *context) : context(context)
 {
     this->physicalDevice = physicalDevice;
 
@@ -103,13 +104,13 @@ void VulkanDevice::findQueueFamilies(VkPhysicalDevice device)
             queueFamilyIndices.graphics = i;
         }
 
-        /*  VkBool32 presentSupport = false;
-         vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+        VkBool32 presentSupport = false;
+        vkGetPhysicalDeviceSurfaceSupportKHR(device, i, context->surface, &presentSupport);
 
-         if (presentSupport)
-         {
-             queueFamilyIndices.present = i;
-         } */
+        if (presentSupport)
+        {
+            queueFamilyIndices.present = i;
+        }
 
         if (queueFamilyIndices.isComplete())
         {

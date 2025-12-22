@@ -36,7 +36,7 @@ void main(int argc, char **argv)
     Layer* l = layer; */
     
     Application app(&layer);
-    app.run();
+    //app.run();
     // app->prepare();
     // app->run();
 }

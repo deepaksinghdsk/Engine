@@ -1,11 +1,14 @@
+#pragma once
 #include <vulkan/vulkan.h>
 #include <vector>
-#include <String>
+#include <string>
 #include <iostream>
 #include <optional>
 
+class Context;
 struct VulkanDevice
 {
+	Context *context;
     VkPhysicalDevice physicalDevice;
     VkDevice logicalDevice;
 	/** @brief Properties of the physical device including limits that the application can check against */
@@ -26,7 +29,7 @@ struct VulkanDevice
 	struct
 	{
 		std::optional<uint32_t> graphics;
-        //std::optional<uint32_t> present;
+        std::optional<uint32_t> present;
 		uint32_t compute;
 		uint32_t transfer;
 
@@ -40,7 +43,7 @@ struct VulkanDevice
     {
         return logicalDevice;
     }
-    explicit VulkanDevice(VkPhysicalDevice physicalDevice);
+    explicit VulkanDevice(VkPhysicalDevice physicalDevice, Context *context);
     ~VulkanDevice();
     VkResult createLogicalDevice(VkPhysicalDeviceFeatures enabledFeatures, std::vector<const char*> enabledExtensions, bool useSwapChain = true);
     void findQueueFamilies(VkPhysicalDevice device);

@@ -19,14 +19,22 @@ Context::Context()
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     window = glfwCreateWindow(width, height, "Vulkan", nullptr, nullptr);
     glfwSetWindowUserPointer(window, this);
-    // glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+    glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
 
     initVulkan();
-    vulkanSwapChain.setContext(instance, device, physicalDevice);
+    //vulkanSwapChain.setContext(instance, device, physicalDevice);
+}
+
+void Context::framebufferResizeCallback(GLFWwindow* window, int width, int height)
+{
+    auto app = reinterpret_cast<Context*>(glfwGetWindowUserPointer(window));
+    app->framebufferResized = true;
 }
 
 Context::~Context()
 {
+    delete vulkanDevice;
+
     if (enableValidationLayers)
     {
         DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
@@ -87,6 +95,8 @@ void Context::setupDebugMessenger()
     createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
     createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
     createInfo.pfnUserCallback = debugCallback;
+    createInfo.flags = 0;
+    createInfo.pNext = nullptr;
 
     if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS)
     {
@@ -166,6 +176,8 @@ void Context::createInstance()
         debugCreateInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
         debugCreateInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
         debugCreateInfo.pfnUserCallback = debugCallback;
+        debugCreateInfo.pNext = nullptr;
+        debugCreateInfo.flags = 0;
 
         createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT *)&debugCreateInfo;
     }
@@ -224,19 +236,20 @@ bool Context::checkValidationLayerSupport()
 // Surface creation functions
 void Context::createSurface()
 {
-    vulkanSwapChain.initSurface(window);
+    //vulkanSwapChain.initSurface(window);
 }
 
 void Context::createSwapchain()
 {
-    vulkanSwapChain.create(width, height);
+    //vulkanSwapChain.create(width, height);
+    //vulkanSwapChain.createFrameBuffer();
 }
 
 // Logical Device Creation
 void Context::createLogicalDevice()
 {
     std::cout << "Createing LD" << std::endl;
-    vulkanDevice = new VulkanDevice(physicalDevice);
+    vulkanDevice = new VulkanDevice(physicalDevice, this);
     VkResult result = vulkanDevice->createLogicalDevice(enabledFeatures, enabledDeviceExtensions);
     if (result != VK_SUCCESS)
     {
@@ -247,4 +260,6 @@ void Context::createLogicalDevice()
 
     // Get a graphics queue from the device
     vkGetDeviceQueue(device, vulkanDevice->queueFamilyIndices.graphics.value(), 0, &graphicsQueue);
+    // Get a present queue from the device
+    vkGetDeviceQueue(device, vulkanDevice->queueFamilyIndices.present.value(), 0, &presentQueue);
 }

@@ -1,19 +1,29 @@
 #include "VulkanSwapChain.h"
 #include <algorithm>
 
-void VulkanSwapChain::setContext(VkInstance instance, VkDevice device, VkPhysicalDevice physicalDevice)
+VulkanSwapChain::~VulkanSwapChain()
+{
+    if(surface != VK_NULL_HANDLE)
+        vkDestroySurfaceKHR(instance, surface, nullptr);
+
+    surface = VK_NULL_HANDLE;
+}
+
+void VulkanSwapChain::setContext(VkInstance instance, VkDevice device, Context &context)
 {
     this->instance = instance;
     this->device = device;
-    this->physicalDevice = physicalDevice;
+    this->physicalDevice = context.physicalDevice;
+    this->surface = context.surface;
+    this->context = &context;
 }
 
 void VulkanSwapChain::initSurface(GLFWwindow *window)
 {
-    if(glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS)
-    {
-        throw std::runtime_error("failed to create window surface!");
-    }
+    // if(glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS)
+    // {
+    //     throw std::runtime_error("failed to create window surface!");
+    // }
 
     // Get list of supported surface formats
     uint32_t formatCount;
@@ -46,7 +56,6 @@ void VulkanSwapChain::create(int width, int height)
     VkSurfaceCapabilitiesKHR surfCaps;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfCaps);
 
-    VkExtent2D swapchainExtent;
     if(surfCaps.currentExtent.width != std::numeric_limits<uint32_t>::max())
     {
         swapchainExtent = surfCaps.currentExtent;
@@ -76,7 +85,7 @@ void VulkanSwapChain::create(int width, int height)
             swapchainPresentMode = VK_PRESENT_MODE_MAILBOX_KHR;
     }
 
-    uint32_t imageCount = surfCaps.minImageCount + 1;
+    imageCount = surfCaps.minImageCount + 1;
     if(surfCaps.maxImageCount > 0 && imageCount > surfCaps.maxImageCount)
         imageCount = surfCaps.maxImageCount;
 
@@ -100,6 +109,11 @@ void VulkanSwapChain::create(int width, int height)
     if(vkCreateSwapchainKHR(device, &swapchainCI, nullptr, &swapChain)!= VK_SUCCESS)
         throw std::runtime_error("failed to create swapchain");
 
+    createImageViews();
+}
+
+void VulkanSwapChain::createImageViews()
+{
     vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
     images.resize(imageCount);
     vkGetSwapchainImagesKHR(device, swapChain, &imageCount, images.data());
@@ -129,6 +143,48 @@ void VulkanSwapChain::create(int width, int height)
     }
 }
 
+void VulkanSwapChain::createFrameBuffer(VkRenderPass &renderPass)
+{
+    swapchainFramebuffers.resize(imageViews.size());
+
+    for(uint32_t i =0; i < imageCount; i++)
+    {
+        VkImageView attachments[] = 
+        {
+            imageViews[i]
+        };
+
+        VkFramebufferCreateInfo framebufferInfo{};
+        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebufferInfo.renderPass = renderPass;
+        framebufferInfo.attachmentCount = 1;
+        framebufferInfo.pAttachments = attachments;
+        framebufferInfo.width = swapchainExtent.width;
+        framebufferInfo.height = swapchainExtent.height;
+        framebufferInfo.layers = 1;
+
+        if(vkCreateFramebuffer(device, &framebufferInfo, nullptr, &swapchainFramebuffers[i]) != VK_SUCCESS)
+            throw std::runtime_error("failed to create framebuffer!");
+    }
+}
+
+void VulkanSwapChain::recreateSwapChain(VkRenderPass &renderPass)
+{
+    int width = 0, height = 0;
+    glfwGetFramebufferSize(context->window, &width, &height);
+    while (width == 0 || height == 0) {
+        glfwGetFramebufferSize(context->window, &width, &height);
+        glfwWaitEvents();
+    }
+
+    vkDeviceWaitIdle(device);
+    
+    cleanup();
+    create(width, height);
+    createImageViews();
+    createFrameBuffer(renderPass);
+}
+
 /* VkResult VulkanSwapChain::aquireNextImage()
 {
     return;
@@ -143,16 +199,15 @@ void VulkanSwapChain::cleanup()
 {
     if(swapChain != VK_NULL_HANDLE)
     {
-        for(auto i = 0; i<imageCount; i++)
-            vkDestroyImageView(device, imageViews[i], nullptr);
+        for(auto framebuffer : swapchainFramebuffers)
+            vkDestroyFramebuffer(device, framebuffer, nullptr);
+
+        for(auto imageView : imageViews)
+            vkDestroyImageView(device, imageView, nullptr);
            
         vkDestroySwapchainKHR(device, swapChain, nullptr);
     }
     
-    if(surface != VK_NULL_HANDLE)
-        vkDestroySurfaceKHR(instance, surface, nullptr);
-
-    surface = VK_NULL_HANDLE;
     swapChain = VK_NULL_HANDLE;
 }
 

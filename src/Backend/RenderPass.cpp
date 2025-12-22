@@ -1,9 +1,11 @@
 #include "RenderPass.h"
 
-RenderPass::RenderPass(Context &context) : context(context)
+RenderPass::RenderPass(Context &context, VulkanSwapChain &swapchain): context(context), vulkanSwapchain(swapchain)
 {
     //vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
-    vkDestroyRenderPass(context.device, renderPass, nullptr);
+    if(renderPass != nullptr)
+        vkDestroyRenderPass(context.device, renderPass, nullptr);
+    init();
 }
 
 RenderPass::~RenderPass()
@@ -15,7 +17,7 @@ void RenderPass::init()
 {
     //color buffer Attachement
     VkAttachmentDescription colorAttachment{};
-    colorAttachment.format = context.vulkanSwapChain.colorFormat;
+    colorAttachment.format = vulkanSwapchain.colorFormat;
     colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -36,14 +38,24 @@ void RenderPass::init()
     //layout(location = 0) out vec4 outColor;
     subpass.pColorAttachments = &colorAttachmentRef;
 
+    VkSubpassDependency dependency{};
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependency.dstSubpass = 0;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.srcAccessMask = 0;
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
     VkRenderPassCreateInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     renderPassInfo.attachmentCount = 1;
     renderPassInfo.pAttachments = &colorAttachment;
     renderPassInfo.subpassCount = 1;
     renderPassInfo.pSubpasses = &subpass;
+    renderPassInfo.dependencyCount = 1;
+    renderPassInfo.pDependencies = &dependency;
 
-    if(vkCreateRenderPass(context.device, &renderPassInfo, nullptr, &renderPass) == VK_SUCCESS)
+    if(vkCreateRenderPass(context.device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS)
         throw std::runtime_error("failed to create render pass!");
 }
 

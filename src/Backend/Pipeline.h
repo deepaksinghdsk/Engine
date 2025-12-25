@@ -6,14 +6,17 @@ class Pipeline
 public:
     VkPipeline pipeline;
 
-    Pipeline(VkDevice &device, VkRenderPass renderpass, VkExtent2D extent);
+    Pipeline(VkDevice &device);
     ~Pipeline();
+
+    void initPipeline(const VkDescriptorSetLayout& descSetLayout, VkRenderPass *renderPass, VkExtent2D swapchainExtent);
+
+    VkPipelineLayout getPipelineLayout() const {return pipelineLayout;}
 
 private:
     VkDevice &device;
     VkPipelineLayout pipelineLayout;
 
-    void init(VkRenderPass *renderPass, VkExtent2D extent);
     std::vector<char> readfile(char* fileloc);
     VkShaderModule createShaderModule(std::vector<char> code);
 

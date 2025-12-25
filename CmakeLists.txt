@@ -13,19 +13,29 @@ find_package(Vulkan REQUIRED)
 set(GLFW_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/dependencies/GLFW/include/")
 #set(VULKAN_INCLUDE_DIR "D:/VulkanSDK/1.3.268.0/Include/")
 set(GLFW_LIB_PATH "${CMAKE_SOURCE_DIR}/dependencies/GLFW/lib-vc2022/glfw3.lib")
-message(STATUS "GLFW LIB path: ${GLFW_LIB_PATH}")
+#message(STATUS "GLFW LIB path: ${GLFW_LIB_PATH}")
 
 set(GLM_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/src/thirdParty/glm-0.9.9.8/")
 set(THIRDPARTY_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/src/thirdParty/")
 
+set(IMGUI_INCUDE_DIR "${CMAKE_SOURCE_DIR}/src/thirdParty/imgui/")
+include_directories(${IMGUI_INCUDE_DIR} ${IMGUI_INCUDE_DIR}/backends)
+
 add_definitions(-DGLFW_STATIC)
 
+option(GLFW_BUILD_EXAMPLES "Build the GLFW example programs" OFF)
+option(GLFW_BUILD_TESTS "Build the GLFW test programs" OFF)
+option(GLFW_BUILD_DOCS "Build the GLFW documentation" OFF)
+option(GLFW_INSTALL "Generate installation target" OFF)
+option(GLFW_DOCUMENT_INTERNALS "Include internals in documentation" OFF)
 include_directories(${GLFW_INCLUDE_DIR})
+
 #include_directories(${VULKAN_INCLUDE_DIR})
+
 include_directories(${GLM_INCLUDE_DIR})
 include_directories(${THIRDPARTY_INCLUDE_DIR}) 
 
-add_executable(VulkanEngine 
+set(VULKAN_ENGINE_SOURCES
                     app/src/sandbox.cpp
                     src/Backend/Application.cpp
                     src/Backend/Context.cpp
@@ -35,6 +45,25 @@ add_executable(VulkanEngine
                     src/Backend/CommandBuffer.cpp
                     src/Backend/Buffer.cpp
                     src/Backend/RenderPass.cpp
+                    src/Backend/DescriptorManager.cpp
+                    src/Backend/Camera.h
+                    src/Backend/Image.cpp
+                    src/Backend/Model.cpp    
+)
+
+set(IMGUI_SOURCES
+        src/thirdParty/imgui/backends/imgui_impl_glfw.cpp 
+        src/thirdParty/imgui/backends/imgui_impl_vulkan.cpp 
+        src/thirdParty/imgui/imgui.cpp 
+        src/thirdParty/imgui/imgui_draw.cpp
+        src/thirdParty/imgui/imgui_demo.cpp 
+        src/thirdParty/imgui/imgui_tables.cpp 
+        src/thirdParty/imgui/imgui_widgets.cpp
+)
+
+add_executable(VulkanEngine 
+                    ${VULKAN_ENGINE_SOURCES}
+                    ${IMGUI_SOURCES}
 )
 
 target_include_directories(VulkanEngine PRIVATE

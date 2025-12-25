@@ -1,7 +1,5 @@
 #include "Context.h"
-
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
+#include "VulkanSwapChain.h"
 
 #define GLFW_INCLUDE_VULKAN
 // #define GLFW_STATIC

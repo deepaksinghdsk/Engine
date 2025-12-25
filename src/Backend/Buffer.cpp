@@ -1,4 +1,5 @@
 #include "Buffer.h"
+#include "Context.h"
 
 Buffer::~Buffer()
 {
@@ -7,20 +8,39 @@ Buffer::~Buffer()
 
 void Buffer::destroy()
 {
-    vkDestroyBuffer(m_ctx->device, m_buffer, nullptr);
-    vkFreeMemory(m_ctx->device, m_memory, nullptr);
+    if(!m_ctx)
+        return;
+        
+    if(mapped)
+    {
+        vkUnmapMemory(m_ctx->device, m_memory);
+        mapped = nullptr;
+    }
+    
+    if(m_buffer != VK_NULL_HANDLE)
+    {
+        vkDestroyBuffer(m_ctx->device, m_buffer, nullptr);
+        m_buffer = VK_NULL_HANDLE;
+    }
+    
+    if(m_memory != VK_NULL_HANDLE)
+    {
+        vkFreeMemory(m_ctx->device, m_memory, nullptr);
+        m_memory = VK_NULL_HANDLE;
+    }
 }
 
 void Buffer::create(
     const Context &ctx, 
-    VkDeviceSize size, 
+    VkDeviceSize size, VkDeviceSize offset,
     VkBufferUsageFlags usage, 
     VkMemoryPropertyFlags memoryFlags)
 {
     m_ctx = &ctx;
     m_size = size;
+    m_memoryFlags = memoryFlags;
 
-    VkBufferCreateInfo bufferInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = size;
     bufferInfo.usage = usage;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -37,6 +57,12 @@ void Buffer::create(
     if(vkAllocateMemory(ctx.device, &allocInfo, nullptr, &m_memory)!=VK_SUCCESS)
         throw std::runtime_error("failed to allocate vertex buffer memory!");
     vkBindBufferMemory(ctx.device, m_buffer, m_memory, 0);
+
+    // Persistent mapping - only for host-visible memory
+    if(memoryFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+    {
+        vkMapMemory(m_ctx->device, m_memory, offset, m_size, 0, &mapped);
+    }
 }
 
 uint32_t Buffer::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties)
@@ -54,10 +80,51 @@ uint32_t Buffer::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFi
     throw std::runtime_error("failed to find suitable memory type!");
 }
 
-void Buffer::upload(const void *data, VkDeviceSize size, VkDeviceSize offset)
+void Buffer::upload(const void* data, bool persistMap)
 {
-    void* mapped;
-    vkMapMemory(m_ctx->device, m_memory, offset, size, 0, &mapped);
-    memcpy(mapped, data, static_cast<size_t>(size));
-    vkUnmapMemory(m_ctx->device, m_memory);
+    if(!mapped)
+    {
+        // Map memory if not already mapped
+        vkMapMemory(m_ctx->device, m_memory, 0, m_size, 0, &mapped);
+    }
+    
+    memcpy(mapped, data, (size_t)m_size);
+    
+    if(!persistMap && (m_memoryFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT))
+    {
+        vkUnmapMemory(m_ctx->device, m_memory);
+        mapped = nullptr;
+    }
+}
+
+void Buffer::copyBuffer(const VkBuffer& srcBuffer, VkDeviceSize size, VkCommandPool cmdPool)
+{
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandPool = cmdPool;
+    allocInfo.commandBufferCount = 1;
+
+    VkCommandBuffer cmdBuffer;
+    vkAllocateCommandBuffers(m_ctx->device, &allocInfo, &cmdBuffer);
+
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+    VkBufferCopy copyRegion{};
+    copyRegion.srcOffset = 0;
+    copyRegion.dstOffset = 0;
+    copyRegion.size = size;
+    vkCmdCopyBuffer(cmdBuffer, srcBuffer, m_buffer, 1, &copyRegion);
+    vkEndCommandBuffer(cmdBuffer);
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &cmdBuffer;
+    vkQueueSubmit(m_ctx->graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(m_ctx->graphicsQueue);
+
+    vkFreeCommandBuffers(m_ctx->device, cmdPool, 1, &cmdBuffer);
 }

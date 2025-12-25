@@ -17,7 +17,9 @@
 #include <set>
 
 #include "VulkanDevice.h"
-#include "VulkanSwapChain.h"
+
+// Forward declaration
+struct GLFWwindow;
 
 #ifdef NDEBUG
 const bool enableValidationLayers = false;

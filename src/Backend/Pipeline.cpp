@@ -3,10 +3,10 @@
 #include <fstream>
 #include <vector>
 #include "Application.h"
+#include "Model.h"
 
-Pipeline::Pipeline(VkDevice &device, VkRenderPass renderpass, VkExtent2D extent) : device(device)
+Pipeline::Pipeline(VkDevice &device) : device(device)
 {
-    init(&renderpass, extent);
 }
 
 Pipeline::~Pipeline()
@@ -15,7 +15,7 @@ Pipeline::~Pipeline()
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
 }
 
-void Pipeline::init(VkRenderPass *renderPass, VkExtent2D swapchainExtent)
+void Pipeline::initPipeline(const VkDescriptorSetLayout& descSetLayout, VkRenderPass *renderPass, VkExtent2D swapchainExtent)
 {
     //Fragment and vertex shader loading
     auto vertexShadercode = readfile("D:/Dev/Graphics Proj/Engine/res/shaders/vert.spv");
@@ -36,8 +36,8 @@ void Pipeline::init(VkRenderPass *renderPass, VkExtent2D swapchainExtent)
     VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderCI, fragShaderCI};
 
     //VertexInput
-    auto bindingDescription = Vertex::getBindingDescription();
-    auto attributDescriptions = Vertex::getAttributeDescriptions();
+    auto bindingDescription = Model::Vertex::getBindingDescription();
+    auto attributDescriptions = Model::Vertex::getAttributeDescriptions();
 
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -60,27 +60,27 @@ void Pipeline::init(VkRenderPass *renderPass, VkExtent2D swapchainExtent)
     };
     VkPipelineDynamicStateCreateInfo dynamicstate{};
     dynamicstate.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dynamicstate.dynamicStateCount = dynamicStates.size();
+    dynamicstate.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
     dynamicstate.pDynamicStates = dynamicStates.data();
 
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = (float) swapchainExtent.width;
-    viewport.height = (float) swapchainExtent.height;
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
+    // VkViewport viewport{};
+    // viewport.x = 0.0f;
+    // viewport.y = 0.0f;
+    // viewport.width = (float) swapchainExtent.width;
+    // viewport.height = (float) swapchainExtent.height;
+    // viewport.minDepth = 0.0f;
+    // viewport.maxDepth = 1.0f;
 
-    VkRect2D scissor{};
-    scissor.offset = {0, 0};
-    scissor.extent = swapchainExtent;
+    // VkRect2D scissor{};
+    // scissor.offset = {0, 0};
+    // scissor.extent = swapchainExtent;
 
     VkPipelineViewportStateCreateInfo viewportState{};
     viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
     viewportState.viewportCount = 1;
-    viewportState.pViewports = &viewport;
+    //viewportState.pViewports = &viewport;
     viewportState.scissorCount = 1;
-    viewportState.pScissors = &scissor;
+    //viewportState.pScissors = &scissor;
     
     //Rasterizer
     VkPipelineRasterizationStateCreateInfo rasterizer{};
@@ -88,7 +88,8 @@ void Pipeline::init(VkRenderPass *renderPass, VkExtent2D swapchainExtent)
     rasterizer.rasterizerDiscardEnable = VK_FALSE;
     rasterizer.lineWidth = 1.0f;
     rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    //rasterizer.cullMode = VK_CULL_MODE_NONE;
+    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     //used in shadow mapping (requires enabling a GPU feature)
     rasterizer.depthClampEnable = VK_FALSE;
     rasterizer.depthBiasEnable = VK_FALSE;
@@ -107,7 +108,17 @@ void Pipeline::init(VkRenderPass *renderPass, VkExtent2D swapchainExtent)
     multisampling.alphaToOneEnable = VK_FALSE; // Optional
 
     //ToDo: Depth and stencil testing
-
+    VkPipelineDepthStencilStateCreateInfo depthStencil{};
+    depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depthStencil.depthTestEnable = VK_TRUE;
+    depthStencil.depthWriteEnable = VK_TRUE;
+    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+    depthStencil.depthBoundsTestEnable = VK_FALSE;
+    depthStencil.minDepthBounds = 0.0f;
+    depthStencil.maxDepthBounds = 1.0f;
+    depthStencil.stencilTestEnable = VK_TRUE;
+    depthStencil.front = {};
+    depthStencil.back = {};
 
     //Color blending: combining the color of current frag shad with old in framebuffer
     VkPipelineColorBlendAttachmentState colorBlendAttachment{};
@@ -134,8 +145,8 @@ void Pipeline::init(VkRenderPass *renderPass, VkExtent2D swapchainExtent)
     //Pipeline layout: to pass on Uniform buffer and push Constant data to shaders
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 0; // Optional
-    pipelineLayoutInfo.pSetLayouts = nullptr; // Optional
+    pipelineLayoutInfo.setLayoutCount = 1;
+    pipelineLayoutInfo.pSetLayouts = &descSetLayout;
     pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
     pipelineLayoutInfo.pPushConstantRanges = nullptr; // Optional
     if(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS)
@@ -156,6 +167,8 @@ void Pipeline::init(VkRenderPass *renderPass, VkExtent2D swapchainExtent)
     pipelineInfo.pDepthStencilState = nullptr; // Optional
     pipelineInfo.pColorBlendState = &colorBlending;
     pipelineInfo.pDynamicState = &dynamicstate;
+
+    pipelineInfo.pDepthStencilState = &depthStencil;
 
     pipelineInfo.layout = pipelineLayout;
 

@@ -49,7 +49,7 @@ struct DescriptorResource
 class DescriptorManager
 {
 public:
-    DescriptorManager() = default;
+    DescriptorManager(const Context &ctx);
     ~DescriptorManager();
 
     // Non-copyable, movable
@@ -58,13 +58,14 @@ public:
     DescriptorManager(DescriptorManager &&other) noexcept;
     DescriptorManager &operator=(DescriptorManager &&other) noexcept;
 
-    void createDescriptorSetLayout(const Context &ctx, const std::vector<DescriptorBinding> &bindings);
+    void createDescriptorSetLayout(const std::vector<DescriptorBinding> &bindings);
     void createDescriptorPool(const int MaxFramesInFlight, const std::vector<DescriptorBinding> &bindings);
     void createDescriptorSets(const int MaxFramesInFlight,
                               const std::vector<std::vector<DescriptorResource>> &perFrameResource);
 
     std::vector<VkDescriptorSet> handle() const { return descriptorSets; }
     VkDescriptorSetLayout getDescSetLayout() const { return m_descriptorSetLayout; };
+    VkDescriptorPool getDescPool() const { return descriptorPool; };
 
 private:
     VkDescriptorSetLayout m_descriptorSetLayout;

@@ -20,11 +20,12 @@ public:
     ~VulkanSwapChain();
 
     VkSurfaceKHR surface{VK_NULL_HANDLE};
+    VkSurfaceFormatKHR selectedFormat;
     VkSwapchainKHR swapChain{VK_NULL_HANDLE}; 
     VkExtent2D swapchainExtent;  
     VkFormat colorFormat;
     VkColorSpaceKHR colorSpace;
-    std::vector<VkPresentModeKHR> presentModes;
+    VkPresentModeKHR swapchainPresentMode;
     uint32_t imageCount{0};
     std::vector<VkImage> images{};
     std::vector<VkImageView> imageViews{};

@@ -32,7 +32,7 @@ void VulkanSwapChain::initSurface(GLFWwindow *window)
     std::vector<VkSurfaceFormatKHR> supportedFormats(formatCount);
     vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, supportedFormats.data());
 
-    VkSurfaceFormatKHR selectedFormat = supportedFormats[0];
+    selectedFormat = supportedFormats[0];
     std::vector<VkFormat> prefferedFormats{
         VK_FORMAT_B8G8R8A8_UNORM,
         VK_FORMAT_R8G8B8A8_UNORM,
@@ -79,7 +79,7 @@ void VulkanSwapChain::create(int width, int height, CommandBuffer* cmdBuffer)
     std::vector<VkPresentModeKHR> presentModes;
     vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModecount, presentModes.data());
 
-    VkPresentModeKHR swapchainPresentMode = VK_PRESENT_MODE_FIFO_KHR;
+    swapchainPresentMode = VK_PRESENT_MODE_FIFO_KHR;
     for (const VkPresentModeKHR &presentMode : presentModes)
     {
         if (presentMode == VK_PRESENT_MODE_MAILBOX_KHR)

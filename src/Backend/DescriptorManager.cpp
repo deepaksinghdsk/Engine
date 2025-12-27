@@ -1,16 +1,18 @@
 #include "DescriptorManager.h"
 #include "Buffer.h"
 
+DescriptorManager::DescriptorManager(const Context& ctx) : m_ctx(&ctx)
+{
+}
+
 DescriptorManager::~DescriptorManager()
 {
     vkDestroyDescriptorPool(m_ctx->device, descriptorPool, nullptr);
     vkDestroyDescriptorSetLayout(m_ctx->device, m_descriptorSetLayout, nullptr);
 }
 
-void DescriptorManager::createDescriptorSetLayout(const Context &ctx, const std::vector<DescriptorBinding> &bindings)
+void DescriptorManager::createDescriptorSetLayout(const std::vector<DescriptorBinding> &bindings)
 {
-    m_ctx = &ctx;
-
     // Convert DescriptorBinding to VkDescriptorSetLayoutBinding
     std::vector<VkDescriptorSetLayoutBinding> vkBindings;
     for (const auto &binding : bindings)
@@ -42,7 +44,6 @@ void DescriptorManager::createDescriptorPool(const int MaxFramesInFlight, const 
     {
         VkDescriptorPoolSize poolSize{};
         poolSize.type = binding.descriptorType;
-        ;
         poolSize.descriptorCount = binding.descriptorCount * static_cast<uint32_t>(MaxFramesInFlight);
         poolSizes.push_back(poolSize);
     }
@@ -51,13 +52,15 @@ void DescriptorManager::createDescriptorPool(const int MaxFramesInFlight, const 
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
-    poolInfo.maxSets = static_cast<uint32_t>(MaxFramesInFlight);
+    for (VkDescriptorPoolSize &pool_size : poolSizes)
+        poolInfo.maxSets += pool_size.descriptorCount;
+    //poolInfo.maxSets = static_cast<uint32_t>(MaxFramesInFlight);
 
     if (vkCreateDescriptorPool(m_ctx->device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS)
         throw std::runtime_error("failed to create descriptor pool!");
 }
 
-void DescriptorManager::createDescriptorSets(const int MaxFramesInFlight, const std::vector<std::vector<DescriptorResource>>& perFrameResource)
+void DescriptorManager::createDescriptorSets(const int MaxFramesInFlight, const std::vector<std::vector<DescriptorResource>> &perFrameResource)
 {
     std::vector<VkDescriptorSetLayout> layouts(MaxFramesInFlight, m_descriptorSetLayout);
     VkDescriptorSetAllocateInfo allocInfo{};
@@ -76,7 +79,7 @@ void DescriptorManager::createDescriptorSets(const int MaxFramesInFlight, const 
         std::vector<VkWriteDescriptorSet> descriptorWrites;
 
         // for each binding, create a write descriptor set
-        for (const auto& res : perFrameResource[frameId])
+        for (const auto &res : perFrameResource[frameId])
         {
             VkWriteDescriptorSet descriptorWrite{};
             descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -85,13 +88,14 @@ void DescriptorManager::createDescriptorSets(const int MaxFramesInFlight, const 
             descriptorWrite.dstArrayElement = 0;
             descriptorWrite.descriptorType = res.descBinding.descriptorType;
             descriptorWrite.descriptorCount = res.descBinding.descriptorCount;
-            
-            //Only set buffer info if this is a buffer type
-            if(res.descBinding.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
+
+            // Only set buffer info if this is a buffer type
+            if (res.descBinding.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
                 res.descBinding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
             {
                 descriptorWrite.pBufferInfo = &res.bufferInfo;
-            } else if(res.descBinding.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+            }
+            else if (res.descBinding.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
             {
                 descriptorWrite.pImageInfo = &res.imageInfo;
             }
@@ -100,6 +104,6 @@ void DescriptorManager::createDescriptorSets(const int MaxFramesInFlight, const 
         }
 
         vkUpdateDescriptorSets(m_ctx->device, static_cast<uint32_t>(descriptorWrites.size()),
-                                 descriptorWrites.data(), 0, nullptr);
+                               descriptorWrites.data(), 0, nullptr);
     }
 }

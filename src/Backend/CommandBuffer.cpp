@@ -36,8 +36,10 @@ void CommandBuffer::recordCommandBuffer(VkCommandBuffer commandBuffer,
                                         VkRenderPass &renderPass,
                                         VkFramebuffer &swapchainFramebuffer,
                                         VkExtent2D swapchainExtent,
+                                        VkClearColorValue clearColor,
                                         VkBuffer vertexBuffers[], VkDeviceSize offsets[], VkBuffer indexBuffer, VkDeviceSize ibSize,
-                                        VkDescriptorSet descSet, VkPipelineLayout pipelineLayout)
+                                        VkDescriptorSet descSet, VkPipelineLayout pipelineLayout,
+                                        ImDrawData *drawData)
 {
     vkResetCommandBuffer(commandBuffer, 0);
 
@@ -56,7 +58,7 @@ void CommandBuffer::recordCommandBuffer(VkCommandBuffer commandBuffer,
     renderPassInfo.renderArea.offset = {0, 0};
     renderPassInfo.renderArea.extent = swapchainExtent;
     std::array<VkClearValue, 2> clearValues{};
-    clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+    clearValues[0].color = clearColor;//{{0.0f, 0.0f, 0.0f, 1.0f}};
     clearValues[1].depthStencil = {1.0f, 0};
     renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
     renderPassInfo.pClearValues = clearValues.data();
@@ -84,7 +86,12 @@ void CommandBuffer::recordCommandBuffer(VkCommandBuffer commandBuffer,
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descSet, 0, nullptr);
     // vkCmdDraw(commandBuffer, static_cast<uint32_t>(vbSize), 1, 0, 0);
     vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(ibSize), 1, 0, 0, 0);
+    
+    ImGui_ImplVulkan_RenderDrawData(
+        ImGui::GetDrawData(),
+        commandBuffer);
     vkCmdEndRenderPass(commandBuffer);
+    
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS)
         throw std::runtime_error("failed to record command buffer!");
 }

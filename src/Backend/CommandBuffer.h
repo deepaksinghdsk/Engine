@@ -2,6 +2,9 @@
 #include "Context.h"
 #include "RenderPass.h"
 
+#include "imgui.h"
+#include "backends/imgui_impl_vulkan.h"
+
 class CommandBuffer
 {
 public:
@@ -16,8 +19,10 @@ public:
                              VkRenderPass &renderPass,
                              VkFramebuffer &swapchainFramebuffer,
                              VkExtent2D swapchainExtent,
+                             VkClearColorValue clearColor,
                              VkBuffer vertexBuffers[], VkDeviceSize offsets[], VkBuffer indexBuffer, VkDeviceSize ibSize,
-                             VkDescriptorSet descSet, VkPipelineLayout pipelineLayout);
+                             VkDescriptorSet descSet, VkPipelineLayout pipelineLayout,
+                             ImDrawData *drawData);
     VkCommandPool getCmdPool() const { return commandPool; }
 
 private:

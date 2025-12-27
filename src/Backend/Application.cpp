@@ -8,23 +8,29 @@
 #include <stb_image.h>
 #endif
 
+#include "backends/imgui_impl_glfw.h"
+#include "backends/imgui_impl_vulkan.h"
+
 // Static member initialization
 Camera *Application::camera = nullptr;
 
 float deltaTime = 0.0f;
 float lastDelta = 0.0f;
 bool firstMouse = true;
+bool leftHeld = false;
 float lastX = 0;
 float lastY = 0;
 
-uint32_t indicesSize = 0; 
+size_t indicesSize = 0;
 
 void processInput(GLFWwindow *window);
 void scroll_callback(GLFWwindow *window, double xoffset, double yoffset);
 void mouse_callback(GLFWwindow *window, double xposIn, double yposIn);
+void mouseButton_Callback(GLFWwindow *window, int button, int action, int mods);
 
 Application::Application(Layer *layer) : layer(layer)
 {
+    glfwSetMouseButtonCallback(context.window, mouseButton_Callback);
     glfwSetCursorPosCallback(context.window, mouse_callback);
     glfwSetScrollCallback(context.window, scroll_callback);
 
@@ -40,15 +46,14 @@ Application::Application(Layer *layer) : layer(layer)
     cmdBuffer = new CommandBuffer(context, MAX_FRAMES_IN_FLIGHT);
     vulkanSwapChain.create(context.width, context.height, cmdBuffer);
 
-    lastX = vulkanSwapChain.swapchainExtent.width;
-    lastY = vulkanSwapChain.swapchainExtent.height;
-    camera = new Camera(glm::vec3(0.0f, 0.0f, 3.0f));
+    lastX = (float)vulkanSwapChain.swapchainExtent.width;
+    lastY = (float)vulkanSwapChain.swapchainExtent.height;
+    camera = new Camera(glm::vec3(0.0f, 0.0f, 7.0f));
 
     // 3D viking model
     {
-
         Model *model = new Model();
-        model->loadModel("D:/Dev/Graphics Proj/Engine/res/models/viking_room.obj");
+        model->loadModel("D:/Dev/Graphics Proj/Engine/res/models/car.obj");
         indicesSize = model->getIndices().size();
 
         // Vertex Buffer alloc
@@ -101,6 +106,16 @@ Application::Application(Layer *layer) : layer(layer)
         }
     }
 
+    // light uniform buffer Alloc
+    {
+        lightUniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+        {
+            lightUniformBuffers[i] = new Buffer();
+            lightUniformBuffers[i]->create(context, sizeof(lightUBO), 0, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        }
+    }
+
     // Texture Image creation
     {
         // loading texture
@@ -139,7 +154,8 @@ Application::Application(Layer *layer) : layer(layer)
     {
         std::vector<DescriptorBinding> bindings = {
             {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT},
-            {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT}};
+            {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT},
+            {2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT}};
 
         std::vector<std::vector<DescriptorResource>> resources(MAX_FRAMES_IN_FLIGHT);
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
@@ -159,10 +175,18 @@ Application::Application(Layer *layer) : layer(layer)
             samplerRes.imageInfo.imageView = texImage->getImageView();
             samplerRes.imageInfo.sampler = texImage->getSampler();
             resources[i].push_back(samplerRes);
+
+            // Light UBO
+            DescriptorResource lightUBOres{};
+            lightUBOres.descBinding = bindings[2];
+            lightUBOres.bufferInfo.buffer = lightUniformBuffers[i]->handle();
+            lightUBOres.bufferInfo.offset = 0;
+            lightUBOres.bufferInfo.range = sizeof(lightUBO);
+            resources[i].push_back(lightUBOres);
         }
 
-        descManager = new DescriptorManager();
-        descManager->createDescriptorSetLayout(context, bindings);
+        descManager = new DescriptorManager(context);
+        descManager->createDescriptorSetLayout(bindings);
         descManager->createDescriptorPool(MAX_FRAMES_IN_FLIGHT, bindings);
         descManager->createDescriptorSets(MAX_FRAMES_IN_FLIGHT, resources);
     }
@@ -172,6 +196,46 @@ Application::Application(Layer *layer) : layer(layer)
     pipeline = new Pipeline(context.vulkanDevice->logicalDevice);
     pipeline->initPipeline(descManager->getDescSetLayout(), &renderPass->renderPass, vulkanSwapChain.swapchainExtent);
     vulkanSwapChain.createFrameBuffer(renderPass->renderPass);
+
+    //Setup Dear ImGui context
+    {
+        //Imgui Descriptor pool
+        std::vector<DescriptorBinding> binding = {{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE}};
+        imguiDesc = new DescriptorManager(context);
+        imguiDesc->createDescriptorPool(MAX_FRAMES_IN_FLIGHT, binding);
+
+        //Imgui setup
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        io = &ImGui::GetIO();
+        (void)io;
+        io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+        io->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
+
+        // Setup Dear ImGui style
+        ImGui::StyleColorsDark();
+        // ImGui::StyleColorsLight();
+
+        // Setup Platform/Renderer backends
+        ImGui_ImplGlfw_InitForVulkan(context.window, true);
+        ImGui_ImplVulkan_InitInfo init_info = {};
+        // init_info.ApiVersion = VK_API_VERSION_1_3;              // Pass in your value of VkApplicationInfo::apiVersion, otherwise will default to header version.
+        init_info.Instance = context.instance;
+        init_info.PhysicalDevice = context.physicalDevice;
+        init_info.Device = context.device;
+        init_info.QueueFamily = context.vulkanDevice->queueFamilyIndices.graphics.value();
+        init_info.Queue = context.graphicsQueue;
+        // init_info.PipelineCache = g_PipelineCache;
+        init_info.DescriptorPool = imguiDesc->getDescPool();
+        init_info.MinImageCount = vulkanSwapChain.imageCount;
+        init_info.ImageCount = vulkanSwapChain.imageCount;
+        // init_info.Allocator = g_Allocator;
+        init_info.PipelineInfoMain.RenderPass = renderPass->renderPass;
+        init_info.PipelineInfoMain.Subpass = 0;
+        init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+        init_info.CheckVkResultFn = Application::check_vk_result;
+        ImGui_ImplVulkan_Init(&init_info);
+    }
 
     createSyncObjects();
     std::cout << "init done successfully" << std::endl;
@@ -202,14 +266,17 @@ void Application::createSyncObjects()
 
 Application::~Application()
 {
-    //delete model;
+    // delete model;
     delete vertexBuffer;
     delete pipeline;
     delete renderPass;
     vulkanSwapChain.cleanup();
     delete texImage;
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    {
         delete uniformBuffers[i];
+        delete lightUniformBuffers[i];
+    }
     delete descManager;
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
@@ -235,7 +302,7 @@ void Application::run()
     vkDeviceWaitIdle(context.device);
 }
 
-void Application::updateUniformBuffer(uint32_t currentImage)
+void Application::updateUniformBuffer(uint32_t currentImage, const lightUBO &lightUBO)
 {
     static auto startTime = std::chrono::high_resolution_clock::now();
 
@@ -247,10 +314,11 @@ void Application::updateUniformBuffer(uint32_t currentImage)
     // ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     ubo.view = camera->GetViewMatrix();
     // ubo.proj = glm::perspective(glm::radians(45.0f), vulkanSwapChain.swapchainExtent.width / (float)vulkanSwapChain.swapchainExtent.height, 0.1f, 10.f);
-    ubo.proj = glm::perspective(glm::radians(camera->Zoom), (float)vulkanSwapChain.swapchainExtent.width / (float)vulkanSwapChain.swapchainExtent.height, 0.1f, 10.f);
+    ubo.proj = glm::perspective(glm::radians(camera->Zoom), (float)vulkanSwapChain.swapchainExtent.width / (float)vulkanSwapChain.swapchainExtent.height, 0.1f, 20.f);
     ubo.proj[1][1] *= -1;
 
     uniformBuffers[currentFrame]->upload(&ubo, true);
+    lightUniformBuffers[currentFrame]->upload(&lightUBO, true);
 }
 
 /*
@@ -273,11 +341,70 @@ void Application::Draw()
     VkResult result = vkAcquireNextImageKHR(context.device, vulkanSwapChain.swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
     if (result == VK_ERROR_OUT_OF_DATE_KHR)
     {
+        ImGui_ImplVulkan_SetMinImageCount(vulkanSwapChain.imageCount);
         vulkanSwapChain.recreateSwapChain(renderPass->renderPass);
         return;
     }
     else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
         throw std::runtime_error("failed to aquire swap chain image!");
+
+    processInput(context.window);
+    // updateUniformBuffer(currentFrame);
+
+    // Start the Dear ImGui frame
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    // Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
+    static ImVec4 clear_color = ImVec4(0.35f, 0.25f, 0.30f, 1.00f);
+    {
+        static float f = 0.0f;
+        static int counter = 0;
+        static bool show_demo_window = false;
+        static bool show_another_window = false;
+        static glm::vec3 lightPos = glm::vec3(0.0f, 0.0f, 7.0f);
+        static glm::vec3 intensities = glm::vec3(1.0f, 0.0f, 1.0f);
+        static float atten = 1;
+        static float ambCoe = 1;
+
+        ImGui::Begin("Hello, world!"); // Create a window called "Hello, world!" and append into it.
+
+        ImGui::Text("This is some useful text.");          // Display some text (you can use a format strings too)
+        ImGui::Checkbox("Demo Window", &show_demo_window); // Edit bools storing our window open/close state
+        ImGui::Checkbox("Another Window", &show_another_window);
+
+        ImGui::SliderFloat("float", &f, 0.0f, 1.0f);             // Edit 1 float using a slider from 0.0f to 1.0f
+        ImGui::ColorEdit3("clear color", (float *)&clear_color); // Edit 3 floats representing a color
+
+        ImGui::BeginGroup();
+        ImGui::Text("Light Data");
+        ImGui::SliderFloat3("light Position", (float *)&lightPos, -100.0f, 100.0f);
+        ImGui::ColorEdit3("color", (float *)&intensities);
+        ImGui::SliderFloat("attenuation", (float *)&atten, -30.0f, 30.0f);
+        ImGui::SliderFloat("AmbientCoefficient", (float *)&ambCoe, -30.0f, 30.0f);
+        ImGui::EndGroup();
+
+        if (ImGui::Button("Button")) // Buttons return true when clicked (most widgets return true when edited/activated)
+            counter++;
+        ImGui::SameLine();
+        ImGui::Text("counter = %d", counter);
+
+        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io->Framerate, io->Framerate);
+        ImGui::End();
+
+        //std::cout << "Light data(Pos, intensity) " << lightPos.x << " " << lightPos.y << " " << lightPos.z << ", "
+          //        << intensities.x << " " << intensities.y << " " << intensities.z << std::endl;
+        lightUBO ubo{};
+        ubo.position = lightPos;
+        ubo.intensities = intensities;
+        ubo.attenuation = atten;
+        ubo.ambientCoefficient = ambCoe;
+        updateUniformBuffer(currentFrame, ubo);
+    }
+
+    // Rendering
+    ImGui::Render();
 
     vkResetFences(context.device, 1, &inFlightFences[currentFrame]);
     VkBuffer vertexBuffers[] = {vertexBuffer->handle()};
@@ -288,11 +415,10 @@ void Application::Draw()
         renderPass->renderPass,
         vulkanSwapChain.swapchainFramebuffers[imageIndex],
         vulkanSwapChain.swapchainExtent,
-        vertexBuffers, offsets, indexBuffer->handle(), indicesSize,//model->getIndices().size(),
-        descManager->handle()[currentFrame], pipeline->getPipelineLayout());
-
-    processInput(context.window);
-    updateUniformBuffer(currentFrame);
+        {{clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w}},
+        vertexBuffers, offsets, indexBuffer->handle(), indicesSize, // model->getIndices().size(),
+        descManager->handle()[currentFrame], pipeline->getPipelineLayout(),
+        ImGui::GetDrawData());
 
     // submitting the cmd buffer
     VkSubmitInfo submitInfo{};
@@ -358,25 +484,44 @@ void processInput(GLFWwindow *window)
         Application::camera->ProcessKeyboard(UP, deltaTime);
 }
 
+void mouseButton_Callback(GLFWwindow *window, int button, int action, int mods)
+{
+    if (button == GLFW_MOUSE_BUTTON_LEFT)
+    {
+        if (action == GLFW_PRESS)
+        {
+            leftHeld = true;
+            firstMouse = true;
+        }
+        else if (action == GLFW_RELEASE)
+        {
+            leftHeld = false;
+        }
+    }
+}
+
 void mouse_callback(GLFWwindow *window, double xposIn, double yposIn)
 {
-    float xpos = static_cast<float>(xposIn);
-    float ypos = static_cast<float>(yposIn);
-
-    if (firstMouse)
+    if (leftHeld)
     {
+        float xpos = static_cast<float>(xposIn);
+        float ypos = static_cast<float>(yposIn);
+
+        if (firstMouse)
+        {
+            lastX = xpos;
+            lastY = ypos;
+            firstMouse = false;
+        }
+
+        float xoffset = xpos - lastX;
+        float yoffset = lastY - ypos; // reversed since y-coordinates go from bottom to top
+
         lastX = xpos;
         lastY = ypos;
-        firstMouse = false;
+
+        Application::camera->ProcessMouseMovement(xoffset, yoffset);
     }
-
-    float xoffset = xpos - lastX;
-    float yoffset = lastY - ypos; // reversed since y-coordinates go from bottom to top
-
-    lastX = xpos;
-    lastY = ypos;
-
-    Application::camera->ProcessMouseMovement(xoffset, yoffset);
 }
 
 void scroll_callback(GLFWwindow *window, double xoffset, double yoffset)

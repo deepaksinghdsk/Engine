@@ -21,22 +21,22 @@ public:
                      VkFormat format,
                      VkImageTiling tiling,
                      VkImageUsageFlags usage,
-                     VkMemoryPropertyFlags properties);
+                     VkMemoryPropertyFlags properties,
+                     int arrayLayers = 1,
+                     VkImageCreateFlags flags = NULL);
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
-    void createImageView(VkFormat format, VkImageAspectFlags aspectFlags);
-    void createImageSampler();
+    void createImageView(VkImageViewType viewType, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t layerCount = 1);
+    void createImageSampler(VkSamplerAddressMode addressMode = VK_SAMPLER_ADDRESS_MODE_REPEAT);
 
     void copyBuffer(const VkBuffer &srcBuffer,
-                    VkDeviceSize size,
                     VkCommandPool cmdPool,
-                    VkFormat format,
-                    VkImageLayout oldLayout,
-                    VkImageLayout newLayout,
-                    VkImageLayout finalLayout);
+                    const VkBufferImageCopy *region,
+                    uint32_t regionCount = 1);
     void transitionImageLayout(VkCommandPool cmdPool,
                                VkFormat format,
                                VkImageLayout oldLayout,
-                               VkImageLayout newLayout);
+                               VkImageLayout newLayout,
+                               uint32_t layerCount = 1);
     VkFormat findSupportedFormat(const std::vector<VkFormat> &candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
     bool hasStencilComponent(VkFormat format);
 

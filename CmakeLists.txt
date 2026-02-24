@@ -4,6 +4,11 @@ project(VulkanEngine VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
 
+# Fix PDB locking issues with parallel builds on MSVC
+if(MSVC)
+    string(APPEND CMAKE_CXX_FLAGS " /FS")
+endif()
+
 include(CTEST)
 enable_testing()
 
@@ -75,6 +80,13 @@ target_link_libraries(VulkanEngine
     Vulkan::Vulkan
     ${GLFW_LIB_PATH}
 )
+
+# Fix linker warning about MSVCRT
+if(MSVC)
+    set_target_properties(VulkanEngine PROPERTIES
+        LINK_FLAGS "/NODEFAULTLIB:MSVCRT"
+    )
+endif()
 
 # Add test target
 add_custom_target(test1

@@ -8,22 +8,22 @@ Buffer::~Buffer()
 
 void Buffer::destroy()
 {
-    if(!m_ctx)
+    if (!m_ctx)
         return;
-        
-    if(mapped)
+
+    if (mapped)
     {
         vkUnmapMemory(m_ctx->device, m_memory);
         mapped = nullptr;
     }
-    
-    if(m_buffer != VK_NULL_HANDLE)
+
+    if (m_buffer != VK_NULL_HANDLE)
     {
         vkDestroyBuffer(m_ctx->device, m_buffer, nullptr);
         m_buffer = VK_NULL_HANDLE;
     }
-    
-    if(m_memory != VK_NULL_HANDLE)
+
+    if (m_memory != VK_NULL_HANDLE)
     {
         vkFreeMemory(m_ctx->device, m_memory, nullptr);
         m_memory = VK_NULL_HANDLE;
@@ -31,9 +31,9 @@ void Buffer::destroy()
 }
 
 void Buffer::create(
-    const Context &ctx, 
+    const Context &ctx,
     VkDeviceSize size, VkDeviceSize offset,
-    VkBufferUsageFlags usage, 
+    VkBufferUsageFlags usage,
     VkMemoryPropertyFlags memoryFlags)
 {
     m_ctx = &ctx;
@@ -45,7 +45,7 @@ void Buffer::create(
     bufferInfo.usage = usage;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    if(vkCreateBuffer(ctx.device, &bufferInfo, nullptr, &m_buffer) != VK_SUCCESS)
+    if (vkCreateBuffer(ctx.device, &bufferInfo, nullptr, &m_buffer) != VK_SUCCESS)
         throw std::runtime_error("failed to create vertex buffer!");
 
     VkMemoryRequirements memReq;
@@ -53,13 +53,13 @@ void Buffer::create(
     VkMemoryAllocateInfo allocInfo{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
     allocInfo.allocationSize = memReq.size;
     allocInfo.memoryTypeIndex = findMemoryType(ctx.physicalDevice, memReq.memoryTypeBits, memoryFlags);
-    
-    if(vkAllocateMemory(ctx.device, &allocInfo, nullptr, &m_memory)!=VK_SUCCESS)
+
+    if (vkAllocateMemory(ctx.device, &allocInfo, nullptr, &m_memory) != VK_SUCCESS)
         throw std::runtime_error("failed to allocate vertex buffer memory!");
     vkBindBufferMemory(ctx.device, m_buffer, m_memory, 0);
 
     // Persistent mapping - only for host-visible memory
-    if(memoryFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+    if (memoryFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
     {
         vkMapMemory(m_ctx->device, m_memory, offset, m_size, 0, &mapped);
     }
@@ -70,9 +70,9 @@ uint32_t Buffer::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFi
     VkPhysicalDeviceMemoryProperties memProp;
     vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProp);
 
-    for(uint32_t i =0; i< memProp.memoryTypeCount; i++)
+    for (uint32_t i = 0; i < memProp.memoryTypeCount; i++)
     {
-        if((typeFilter & (1<<i)) && 
+        if ((typeFilter & (1 << i)) &&
             (memProp.memoryTypes[i].propertyFlags & properties) == properties)
             return i;
     }
@@ -80,24 +80,35 @@ uint32_t Buffer::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFi
     throw std::runtime_error("failed to find suitable memory type!");
 }
 
-void Buffer::upload(const void* data, bool persistMap)
+void Buffer::upload(const void *data, bool persistMap, uint32_t face, size_t faceSize)
 {
-    if(!mapped)
+    if (!mapped)
     {
         // Map memory if not already mapped
         vkMapMemory(m_ctx->device, m_memory, 0, m_size, 0, &mapped);
     }
-    
-    memcpy(mapped, data, (size_t)m_size);
-    
-    if(!persistMap && (m_memoryFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT))
+
+    if (!faceSize)
+    {
+        memcpy(mapped, data, (size_t)m_size);
+    }
+    else
+    {
+        uint8_t *dst = reinterpret_cast<uint8_t *>(mapped);
+        memcpy(
+            dst + face * faceSize,
+            data,
+            faceSize);
+    }
+
+    if (!persistMap && (m_memoryFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT))
     {
         vkUnmapMemory(m_ctx->device, m_memory);
         mapped = nullptr;
     }
 }
 
-void Buffer::copyBuffer(const VkBuffer& srcBuffer, VkDeviceSize size, VkCommandPool cmdPool)
+void Buffer::copyBuffer(const VkBuffer &srcBuffer, VkDeviceSize size, VkCommandPool cmdPool)
 {
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;

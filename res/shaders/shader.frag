@@ -1,16 +1,22 @@
 #version 450
+#define MAX_TEXTURES 53
 
-layout(binding = 1) uniform sampler2D texSampler;
+layout(binding = 1) uniform sampler2D texSamplers[MAX_TEXTURES];
 layout(binding = 2) uniform Light{
 	vec3 position;
-	vec3 intensities; //a.k.a the color of the light
+	vec3 intensities; // the color of the light
 	float attenuation;
 	float ambientCoefficient;
 } light;
 
+layout(push_constant) uniform DrawData
+{
+	uint texIndex;
+} draw;
+
 vec3 cameraPosition = {0.0f, 0.0f, 7.0f};
 float materialShininess = 0.01f;
-vec3 materialSpecularColor = {1.0f, 0.5f, 1.0f};
+vec3 materialSpecularColor= {1.0f, 1.0f, 1.0f};
 
 layout(location = 0) in vec3 fragColor;
 layout(location = 1) in vec2 fragTexCoord;
@@ -40,7 +46,7 @@ void main() {
 
 	//brightness/cos(angle)
 	float brightness = dot(normal, surfaceToLight) / (length(surfaceToLight) * length(normal));
-	brightness = clamp(brightness, 0, 1);
+	brightness = clamp(brightness, 0, 100);
 
 	//specular
 	vec3 incidenceVector = -surfaceToLight; //a unit vector
@@ -54,9 +60,9 @@ void main() {
 	// 2. The color/intensities of the light: light.intensities
 	// 3. The texture and texture coord: texture(tex, fragTexCoord)
 	
-	vec4 surfaceColor = texture(texSampler, fragTexCoord);//vec4(0.246, 0.246, 0.246, 1.0);
+	vec4 surfaceColor = texture(texSamplers[draw.texIndex], fragTexCoord); //vec4(0.246, 0.246, 0.246, 1.0);
 
-	vec3 diffuse = brightness * light.intensities * surfaceColor.rgb;
+	vec3 diffuse = 20 * brightness * light.intensities * surfaceColor.rgb;
 	
 	vec3 ambient = light.ambientCoefficient * surfaceColor.rgb * light.intensities;
 

@@ -20,7 +20,7 @@ struct DescriptorResource
 
     //one of these is valid depending on type
     VkDescriptorBufferInfo bufferInfo{};
-    VkDescriptorImageInfo imageInfo{};
+    std::vector<VkDescriptorImageInfo> imageInfos;
 
     /* static DescriptorResource uniformBuffer(
         VkDescriptorType type,
@@ -68,8 +68,8 @@ public:
     VkDescriptorPool getDescPool() const { return descriptorPool; };
 
 private:
-    VkDescriptorSetLayout m_descriptorSetLayout;
-    VkDescriptorPool descriptorPool;
+    VkDescriptorSetLayout m_descriptorSetLayout = VK_NULL_HANDLE;
+    VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
     std::vector<VkDescriptorSet> descriptorSets;
 
     const Context *m_ctx = nullptr;

@@ -13,6 +13,7 @@ public:
     VulkanSwapChain *vulkanSwapchain;
 
     void createRenderPass(VkFormat depthFormat);
+    void createCustomRenderPass(VkFormat depthFormat, std::vector<VkSubpassDependency> &subpassDependencies);
 
 private:
     Context &context;

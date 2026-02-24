@@ -31,24 +31,20 @@ void CommandBuffer::createCommandPool()
         throw std::runtime_error("failed to create command pool");
 }
 
-void CommandBuffer::recordCommandBuffer(VkCommandBuffer commandBuffer,
-                                        VkPipeline &pipeline,
-                                        VkRenderPass &renderPass,
-                                        VkFramebuffer &swapchainFramebuffer,
-                                        VkExtent2D swapchainExtent,
-                                        VkClearColorValue clearColor,
-                                        VkBuffer vertexBuffers[], VkDeviceSize offsets[], VkBuffer indexBuffer, VkDeviceSize ibSize,
-                                        VkDescriptorSet descSet, VkPipelineLayout pipelineLayout,
-                                        ImDrawData *drawData)
+void CommandBuffer::beginCmd( uint32_t currentFrame,
+    VkRenderPass &renderPass,
+    VkFramebuffer &swapchainFramebuffer,
+    VkExtent2D swapchainExtent,
+    VkClearColorValue clearColor)
 {
-    vkResetCommandBuffer(commandBuffer, 0);
+    vkResetCommandBuffer(commandBuffers[currentFrame], 0);
 
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = 0;
     beginInfo.pInheritanceInfo = nullptr;
 
-    if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS)
+    if (vkBeginCommandBuffer(commandBuffers[currentFrame], &beginInfo) != VK_SUCCESS)
         throw std::runtime_error("failed to begin recording command buffer");
 
     VkRenderPassBeginInfo renderPassInfo{};
@@ -58,40 +54,36 @@ void CommandBuffer::recordCommandBuffer(VkCommandBuffer commandBuffer,
     renderPassInfo.renderArea.offset = {0, 0};
     renderPassInfo.renderArea.extent = swapchainExtent;
     std::array<VkClearValue, 2> clearValues{};
-    clearValues[0].color = clearColor;//{{0.0f, 0.0f, 0.0f, 1.0f}};
+    clearValues[0].color = clearColor; //{{0.0f, 0.0f, 0.0f, 1.0f}};
     clearValues[1].depthStencil = {1.0f, 0};
     renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
     renderPassInfo.pClearValues = clearValues.data();
 
-    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+    vkCmdBeginRenderPass(commandBuffers[currentFrame], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+}
 
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = static_cast<float>(swapchainExtent.width);
-    viewport.height = static_cast<float>(swapchainExtent.height);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+void CommandBuffer::endCmd(uint32_t currentFrame)
+{
+    vkCmdEndRenderPass(commandBuffers[currentFrame]);
 
-    VkRect2D scissor{};
-    scissor.offset = {0, 0};
-    scissor.extent = swapchainExtent;
-    vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-
-    vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-    vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-
-    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descSet, 0, nullptr);
-    // vkCmdDraw(commandBuffer, static_cast<uint32_t>(vbSize), 1, 0, 0);
-    vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(ibSize), 1, 0, 0, 0);
-    
-    ImGui_ImplVulkan_RenderDrawData(
-        ImGui::GetDrawData(),
-        commandBuffer);
-    vkCmdEndRenderPass(commandBuffer);
-    
-    if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS)
+    if (vkEndCommandBuffer(commandBuffers[currentFrame]) != VK_SUCCESS)
         throw std::runtime_error("failed to record command buffer!");
+}
+
+void CommandBuffer::recordCommandBuffer(VkCommandBuffer commandBuffer,
+                                        VkPipeline &pipeline,
+                                        VkPipeline &skyboxPipeline, // skybox pipeline
+                                        VkRenderPass &renderPass,
+                                        VkFramebuffer &swapchainFramebuffer,
+                                        VkExtent2D swapchainExtent,
+                                        VkClearColorValue clearColor,
+                                        VkBuffer vertexBuffers[], VkDeviceSize offsets[], VkBuffer indexBuffer, VkDeviceSize ibSize,
+                                        VkBuffer skyboxVertexBuffers[], VkDeviceSize skyboxOffsets[], VkDeviceSize vbSize, // skybox data
+                                        VkDescriptorSet descSet, VkPipelineLayout pipelineLayout, const std::vector<Model::Submesh> &submeshes,
+                                        VkDescriptorSet skyboxDescSet, VkPipelineLayout skyboxPipelineLayout, // skybox desc sets
+                                        const std::unordered_map<uint32_t, int> &matIndTexInd,
+                                        ImDrawData *drawData)
+{
+ 
+    
 }

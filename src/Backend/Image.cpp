@@ -17,7 +17,9 @@ void Image::createImage(uint32_t width, uint32_t height,
                         VkFormat format,
                         VkImageTiling tiling,
                         VkImageUsageFlags usage,
-                        VkMemoryPropertyFlags properties)
+                        VkMemoryPropertyFlags properties,
+                        int arrayLayers,
+                        VkImageCreateFlags flags)
 {
     m_width = width;
     m_height = height;
@@ -30,12 +32,13 @@ void Image::createImage(uint32_t width, uint32_t height,
     imageInfo.extent.height = height;
     imageInfo.extent.depth = 1;
     imageInfo.mipLevels = 1;
-    imageInfo.arrayLayers = 1;
+    imageInfo.arrayLayers = arrayLayers;
     imageInfo.format = format;
     imageInfo.tiling = tiling;
     imageInfo.initialLayout = initialLayout;
     imageInfo.usage = usage;
     imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imageInfo.flags = flags;
     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
     if (vkCreateImage(m_ctx->device, &imageInfo, nullptr, &m_image) != VK_SUCCESS)
@@ -70,32 +73,32 @@ uint32_t Image::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags proper
     throw std::runtime_error("failed to find suitable memory type!");
 }
 
-void Image::createImageView(VkFormat format, VkImageAspectFlags aspectFlags)
+void Image::createImageView(VkImageViewType viewType, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t layerCount)
 {
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewInfo.image = m_image;
-    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.viewType = viewType;
     viewInfo.format = format;
     viewInfo.subresourceRange.aspectMask = aspectFlags;
     viewInfo.subresourceRange.baseMipLevel = 0;
     viewInfo.subresourceRange.levelCount = 1;
     viewInfo.subresourceRange.baseArrayLayer = 0;
-    viewInfo.subresourceRange.layerCount = 1;
+    viewInfo.subresourceRange.layerCount = layerCount;
 
     if (vkCreateImageView(m_ctx->device, &viewInfo, nullptr, &m_imageView) != VK_SUCCESS)
         throw std::runtime_error("failed to create image view!");
 }
 
-void Image::createImageSampler()
+void Image::createImageSampler(VkSamplerAddressMode addressMode)
 {
     VkSamplerCreateInfo samplerInfo{};
     samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     samplerInfo.magFilter = VK_FILTER_LINEAR; // Magnified texels, for Oversampling Problem
     samplerInfo.minFilter = VK_FILTER_LINEAR; // Minified texels, for underSampling Problem
-    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.addressModeU = addressMode;
+    samplerInfo.addressModeV = addressMode;
+    samplerInfo.addressModeW = addressMode;
 
     VkPhysicalDeviceProperties properties{};
     vkGetPhysicalDeviceProperties(m_ctx->physicalDevice, &properties);
@@ -117,11 +120,11 @@ void Image::createImageSampler()
         throw std::runtime_error("Failed to create image sampler");
 }
 
-void Image::copyBuffer(const VkBuffer &srcBuffer, VkDeviceSize size, VkCommandPool cmdPool, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, VkImageLayout finalLayout)
+void Image::copyBuffer(const VkBuffer &srcBuffer, VkCommandPool cmdPool, const VkBufferImageCopy *region, uint32_t regionCount)
 {
     // Purpose: transition the texture iamge to VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
     // to copy the buffer to image
-    transitionImageLayout(cmdPool, format, oldLayout, newLayout);
+    // transitionImageLayout(cmdPool, format, oldLayout, newLayout);
 
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -138,7 +141,7 @@ void Image::copyBuffer(const VkBuffer &srcBuffer, VkDeviceSize size, VkCommandPo
     vkBeginCommandBuffer(commandBuffer, &beginInfo);
 
     // buffer to Image copy operation
-    VkBufferImageCopy region{};
+    /* VkBufferImageCopy region{};
     region.bufferOffset = 0;
     region.bufferRowLength = 0;
     region.bufferImageHeight = 0;
@@ -147,13 +150,13 @@ void Image::copyBuffer(const VkBuffer &srcBuffer, VkDeviceSize size, VkCommandPo
     region.imageSubresource.baseArrayLayer = 0;
     region.imageSubresource.layerCount = 1;
     region.imageOffset = {0, 0, 0};
-    region.imageExtent = {m_width, m_height, 1};
+    region.imageExtent = {m_width, m_height, 1}; */
     vkCmdCopyBufferToImage(commandBuffer,
                            srcBuffer,
                            m_image,
                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                           1,
-                           &region);
+                           regionCount,
+                           region);
 
     vkEndCommandBuffer(commandBuffer);
 
@@ -166,15 +169,12 @@ void Image::copyBuffer(const VkBuffer &srcBuffer, VkDeviceSize size, VkCommandPo
 
     // Purpose: transition the texture imAge to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
     // to be able to start sampling from the texture image in the shader
-    transitionImageLayout(cmdPool,
-                          format,
-                          newLayout,
-                          finalLayout);
+    // transitionImageLayout(cmdPool, format, newLayout, finalLayout);
 
     vkFreeCommandBuffers(m_ctx->device, cmdPool, 1, &commandBuffer);
 }
 
-void Image::transitionImageLayout(VkCommandPool cmdPool, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
+void Image::transitionImageLayout(VkCommandPool cmdPool, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t layerCount)
 {
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -215,7 +215,7 @@ void Image::transitionImageLayout(VkCommandPool cmdPool, VkFormat format, VkImag
     barrier.subresourceRange.baseMipLevel = 0;
     barrier.subresourceRange.levelCount = 1;
     barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount = 1;
+    barrier.subresourceRange.layerCount = layerCount;
 
     if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
     {

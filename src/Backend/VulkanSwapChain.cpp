@@ -50,7 +50,7 @@ void VulkanSwapChain::initSurface(GLFWwindow *window)
     colorSpace = selectedFormat.colorSpace;
 }
 
-void VulkanSwapChain::create(int width, int height, CommandBuffer* cmdBuffer)
+void VulkanSwapChain::create(int width, int height, CommandBuffer *cmdBuffer)
 {
     m_cmdBuffer = cmdBuffer;
 
@@ -114,6 +114,26 @@ void VulkanSwapChain::create(int width, int height, CommandBuffer* cmdBuffer)
     createDepthImage();
 }
 
+void VulkanSwapChain::createDepthImage()
+{
+    // Depth image
+    depthImage = new Image(context);
+    VkFormat depthFormat = depthImage->findSupportedFormat({VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT},
+                                                           VK_IMAGE_TILING_OPTIMAL,
+                                                           VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
+    depthImage->createImage(swapchainExtent.width,
+                            swapchainExtent.width,
+                            VK_IMAGE_LAYOUT_UNDEFINED,
+                            depthFormat, VK_IMAGE_TILING_OPTIMAL,
+                            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    depthImage->transitionImageLayout(m_cmdBuffer->getCmdPool(),
+                                      depthFormat,
+                                      VK_IMAGE_LAYOUT_UNDEFINED,
+                                      VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+    depthImage->createImageView(VK_IMAGE_VIEW_TYPE_2D, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+}
+
 void VulkanSwapChain::createImageViews()
 {
     vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
@@ -122,7 +142,7 @@ void VulkanSwapChain::createImageViews()
 
     // Now get the swapchain image buffers containing the image and imageView
     imageViews.resize(imageCount);
-    for (auto i = 0; i < imageCount; i++)
+    for (uint32_t i = 0; i < imageCount; i++)
     {
         VkImageViewCreateInfo colorAttachmentView{};
         colorAttachmentView.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -171,26 +191,6 @@ void VulkanSwapChain::createFrameBuffer(VkRenderPass &renderPass)
     }
 }
 
-void VulkanSwapChain::createDepthImage()
-{
-    // Depth image
-    depthImage = new Image(context);
-    VkFormat depthFormat = depthImage->findSupportedFormat({VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT},
-                                                           VK_IMAGE_TILING_OPTIMAL,
-                                                           VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
-    depthImage->createImage(swapchainExtent.width,
-                            swapchainExtent.width,
-                            VK_IMAGE_LAYOUT_UNDEFINED,
-                            depthFormat, VK_IMAGE_TILING_OPTIMAL,
-                            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    depthImage->transitionImageLayout(m_cmdBuffer->getCmdPool(),
-                                      depthFormat,
-                                      VK_IMAGE_LAYOUT_UNDEFINED,
-                                      VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-    depthImage->createImageView(depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
-}
-
 void VulkanSwapChain::recreateSwapChain(VkRenderPass &renderPass)
 {
     int width = 0, height = 0;
@@ -209,16 +209,6 @@ void VulkanSwapChain::recreateSwapChain(VkRenderPass &renderPass)
     createDepthImage();
     createFrameBuffer(renderPass);
 }
-
-/* VkResult VulkanSwapChain::aquireNextImage()
-{
-    return;
-}
-
-VkResult VulkanSwapChain::queuePresent()
-{
-    return;
-} */
 
 void VulkanSwapChain::cleanup()
 {

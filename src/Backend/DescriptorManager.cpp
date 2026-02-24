@@ -7,8 +7,20 @@ DescriptorManager::DescriptorManager(const Context& ctx) : m_ctx(&ctx)
 
 DescriptorManager::~DescriptorManager()
 {
-    vkDestroyDescriptorPool(m_ctx->device, descriptorPool, nullptr);
-    vkDestroyDescriptorSetLayout(m_ctx->device, m_descriptorSetLayout, nullptr);
+    // Descriptor sets are automatically freed when the pool is destroyed
+    if (m_ctx && m_ctx->device != VK_NULL_HANDLE)
+    {
+        if (descriptorPool != VK_NULL_HANDLE)
+        {
+            vkDestroyDescriptorPool(m_ctx->device, descriptorPool, nullptr);
+            descriptorPool = VK_NULL_HANDLE;
+        }
+        if (m_descriptorSetLayout != VK_NULL_HANDLE)
+        {
+            vkDestroyDescriptorSetLayout(m_ctx->device, m_descriptorSetLayout, nullptr);
+            m_descriptorSetLayout = VK_NULL_HANDLE;
+        }
+    }
 }
 
 void DescriptorManager::createDescriptorSetLayout(const std::vector<DescriptorBinding> &bindings)
@@ -50,6 +62,7 @@ void DescriptorManager::createDescriptorPool(const int MaxFramesInFlight, const 
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;  // Allow freeing descriptor sets
     poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
     for (VkDescriptorPoolSize &pool_size : poolSizes)
@@ -97,7 +110,7 @@ void DescriptorManager::createDescriptorSets(const int MaxFramesInFlight, const 
             }
             else if (res.descBinding.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
             {
-                descriptorWrite.pImageInfo = &res.imageInfo;
+                descriptorWrite.pImageInfo = res.imageInfos.data();
             }
 
             descriptorWrites.push_back(descriptorWrite);

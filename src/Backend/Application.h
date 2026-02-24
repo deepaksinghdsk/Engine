@@ -13,33 +13,24 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <GLFW/glfw3.h>
 
-#include "Model.h"
-
 #include "imgui.h"
 
 class Buffer;
 class CommandBuffer;
 class RenderPass;
+class Model;
 
 class Application
 {
-private:
+protected:
     Context context;
     VulkanSwapChain vulkanSwapChain;
-    Layer *layer;
+    //Application *layer;
     CommandBuffer *cmdBuffer;
-    Pipeline *pipeline;
+
     RenderPass *renderPass;
-    // Pipeline pipeline;
-    Buffer *vertexBuffer;
-    Buffer *indexBuffer;
-    DescriptorManager *descManager;
-    std::vector<Buffer *> uniformBuffers;
-    std::vector<Buffer*> lightUniformBuffers;
-    Image *texImage;
 
     DescriptorManager *imguiDesc;
-    // Model *model;
 
     const int MAX_FRAMES_IN_FLIGHT = 2;
     uint32_t currentFrame = 0;
@@ -70,30 +61,20 @@ private:
          6, 7, 4
      }; */
 
-    struct uniformBufferObject
-    {
-        glm::mat4 model;
-        glm::mat4 view;
-        glm::mat4 proj;
-    };
 
-    struct lightUBO
-    {
-        glm::vec3 position;
-	    glm::vec3 intensities; //a.k.a the color of the light
-	    float attenuation;
-	    float ambientCoefficient;
-    };
 
 public:
-    Application(Layer *layer);
+    Application();
+    //Application(Application *layer);
     ~Application();
 
     static Camera *camera;
     void createSyncObjects();
-    void run();
-    void updateUniformBuffer(uint32_t currentImage, const lightUBO& lightUBO);
-    void Draw();
+    void init();
+    void runLoop();
+    //void updateUniformBuffer(uint32_t currentImage, const lightUBO& lightUBO);
+    uint32_t beginDraw();
+    void endDraw(uint32_t imgInd);
 
     static void check_vk_result(VkResult err)
     {
@@ -103,4 +84,9 @@ public:
         if (err < 0)
             abort();
     }
+
+    
+    virtual void run(uint32_t imgInd) = 0;
+    virtual void prepare() = 0;
+    virtual void onUIRender() = 0;
 };

@@ -23,7 +23,7 @@ public:
 
     void destroy();
     uint32_t findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
-    void upload(const void* data, bool persistMap);
+    void upload(const void* data, bool persistMap, uint32_t face = 0, size_t faceSize = 0);
     void copyBuffer(const VkBuffer& srcBuffer, VkDeviceSize size, VkCommandPool cmdPool);
 
     VkBuffer handle() const {return m_buffer;}

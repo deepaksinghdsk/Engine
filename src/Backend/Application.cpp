@@ -3,10 +3,7 @@
 #include "CommandBuffer.h"
 #include "Buffer.h"
 
-#ifndef STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
-#endif
+#include "Model.h"
 
 #include "backends/imgui_impl_glfw.h"
 #include "backends/imgui_impl_vulkan.h"
@@ -16,26 +13,22 @@ Camera *Application::camera = nullptr;
 
 float deltaTime = 0.0f;
 float lastDelta = 0.0f;
+
 bool firstMouse = true;
 bool leftHeld = false;
 float lastX = 0;
 float lastY = 0;
-
-size_t indicesSize = 0;
 
 void processInput(GLFWwindow *window);
 void scroll_callback(GLFWwindow *window, double xoffset, double yoffset);
 void mouse_callback(GLFWwindow *window, double xposIn, double yposIn);
 void mouseButton_Callback(GLFWwindow *window, int button, int action, int mods);
 
-Application::Application(Layer *layer) : layer(layer)
+Application::Application()
 {
     glfwSetMouseButtonCallback(context.window, mouseButton_Callback);
     glfwSetCursorPosCallback(context.window, mouse_callback);
     glfwSetScrollCallback(context.window, scroll_callback);
-
-    std::cout << "init started" << std::endl
-              << std::endl;
 
     // Physical and logical device is auto created by context class cons
     vulkanSwapChain.setContext(context.instance, context.vulkanDevice->logicalDevice, context);
@@ -46,165 +39,26 @@ Application::Application(Layer *layer) : layer(layer)
     cmdBuffer = new CommandBuffer(context, MAX_FRAMES_IN_FLIGHT);
     vulkanSwapChain.create(context.width, context.height, cmdBuffer);
 
-    lastX = (float)vulkanSwapChain.swapchainExtent.width;
-    lastY = (float)vulkanSwapChain.swapchainExtent.height;
-    camera = new Camera(glm::vec3(0.0f, 0.0f, 7.0f));
-
-    // 3D viking model
-    {
-        Model *model = new Model();
-        model->loadModel("D:/Dev/Graphics Proj/Engine/res/models/car.obj");
-        indicesSize = model->getIndices().size();
-
-        // Vertex Buffer alloc
-        {
-            Buffer stagingBuffer{};
-            stagingBuffer.create(
-                context,
-                (sizeof(model->getVertices()[0]) * model->getVertices().size()), 0,
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-            stagingBuffer.upload(model->getVertices().data(), false);
-
-            vertexBuffer = new Buffer();
-            vertexBuffer->create(
-                context,
-                (sizeof(model->getVertices()[0]) * model->getVertices().size()), 0,
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-            vertexBuffer->copyBuffer(stagingBuffer.handle(), (sizeof(model->getVertices()[0]) * model->getVertices().size()), cmdBuffer->getCmdPool());
-        }
-
-        // Index Buffer Alloc
-        {
-            Buffer stagingBuffer{};
-            VkDeviceSize size = (sizeof(model->getIndices()[0]) * model->getIndices().size());
-            stagingBuffer.create(
-                context,
-                size, 0,
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-            stagingBuffer.upload(model->getIndices().data(), false);
-
-            indexBuffer = new Buffer();
-            indexBuffer->create(
-                context,
-                size, 0,
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-            indexBuffer->copyBuffer(stagingBuffer.handle(), size, cmdBuffer->getCmdPool());
-        }
-    }
-
-    // Uniform buffer Alloc
-    {
-        uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-        {
-            uniformBuffers[i] = new Buffer();
-            uniformBuffers[i]->create(context, sizeof(uniformBufferObject), 0, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-        }
-    }
-
-    // light uniform buffer Alloc
-    {
-        lightUniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-        {
-            lightUniformBuffers[i] = new Buffer();
-            lightUniformBuffers[i]->create(context, sizeof(lightUBO), 0, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-        }
-    }
-
-    // Texture Image creation
-    {
-        // loading texture
-        int texWidth, texHeight, texChannels;
-        stbi_uc *pixels = stbi_load("D:/Dev/Graphics Proj/Engine/res/textures/viking_room.png", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-        VkDeviceSize imageSize = texWidth * texHeight * 4;
-
-        Buffer stagingBuffer{};
-        stagingBuffer.create(
-            context,
-            imageSize, 0,
-            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-        stagingBuffer.upload(pixels, false);
-        stbi_image_free(pixels);
-
-        texImage = new Image(&context);
-        texImage->createImage(texWidth, texHeight,
-                              VK_IMAGE_LAYOUT_UNDEFINED,
-                              VK_FORMAT_R8G8B8A8_SRGB,
-                              VK_IMAGE_TILING_OPTIMAL,
-                              VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        texImage->copyBuffer(stagingBuffer.handle(),
-                             imageSize,
-                             cmdBuffer->getCmdPool(),
-                             VK_FORMAT_R8G8B8A8_SRGB,
-                             VK_IMAGE_LAYOUT_UNDEFINED,
-                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        texImage->createImageView(VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
-        texImage->createImageSampler();
-    }
-
-    // DescriptorSets creation
-    {
-        std::vector<DescriptorBinding> bindings = {
-            {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT},
-            {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT},
-            {2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT}};
-
-        std::vector<std::vector<DescriptorResource>> resources(MAX_FRAMES_IN_FLIGHT);
-        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-        {
-            // uniform buffer
-            DescriptorResource bufferRes{};
-            bufferRes.descBinding = bindings[0];
-            bufferRes.bufferInfo.buffer = uniformBuffers[i]->handle();
-            bufferRes.bufferInfo.offset = 0;
-            bufferRes.bufferInfo.range = sizeof(uniformBufferObject);
-            resources[i].push_back(bufferRes);
-
-            // combined image sampler
-            DescriptorResource samplerRes{};
-            samplerRes.descBinding = bindings[1];
-            samplerRes.imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            samplerRes.imageInfo.imageView = texImage->getImageView();
-            samplerRes.imageInfo.sampler = texImage->getSampler();
-            resources[i].push_back(samplerRes);
-
-            // Light UBO
-            DescriptorResource lightUBOres{};
-            lightUBOres.descBinding = bindings[2];
-            lightUBOres.bufferInfo.buffer = lightUniformBuffers[i]->handle();
-            lightUBOres.bufferInfo.offset = 0;
-            lightUBOres.bufferInfo.range = sizeof(lightUBO);
-            resources[i].push_back(lightUBOres);
-        }
-
-        descManager = new DescriptorManager(context);
-        descManager->createDescriptorSetLayout(bindings);
-        descManager->createDescriptorPool(MAX_FRAMES_IN_FLIGHT, bindings);
-        descManager->createDescriptorSets(MAX_FRAMES_IN_FLIGHT, resources);
-    }
-
     renderPass = new RenderPass(context, vulkanSwapChain);
     renderPass->createRenderPass(vulkanSwapChain.getDepthImage()->getFormat());
-    pipeline = new Pipeline(context.vulkanDevice->logicalDevice);
-    pipeline->initPipeline(descManager->getDescSetLayout(), &renderPass->renderPass, vulkanSwapChain.swapchainExtent);
     vulkanSwapChain.createFrameBuffer(renderPass->renderPass);
+}
 
-    //Setup Dear ImGui context
+void Application::init()
+{
+    prepare();
+
+    lastX = (float)vulkanSwapChain.swapchainExtent.width;
+    lastY = (float)vulkanSwapChain.swapchainExtent.height;
+
+    // Setup Dear ImGui context
     {
-        //Imgui Descriptor pool
+        // Imgui Descriptor pool
         std::vector<DescriptorBinding> binding = {{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE}};
         imguiDesc = new DescriptorManager(context);
         imguiDesc->createDescriptorPool(MAX_FRAMES_IN_FLIGHT, binding);
 
-        //Imgui setup
+        // Imgui setup
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
         io = &ImGui::GetIO();
@@ -238,9 +92,8 @@ Application::Application(Layer *layer) : layer(layer)
     }
 
     createSyncObjects();
-    std::cout << "init done successfully" << std::endl;
 
-    run();
+    std::cout << "init done successfully" << std::endl;
 }
 
 void Application::createSyncObjects()
@@ -266,59 +119,82 @@ void Application::createSyncObjects()
 
 Application::~Application()
 {
-    // delete model;
-    delete vertexBuffer;
-    delete pipeline;
-    delete renderPass;
-    vulkanSwapChain.cleanup();
-    delete texImage;
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    // Wait for device to finish before cleanup
+    if (context.device != VK_NULL_HANDLE)
     {
-        delete uniformBuffers[i];
-        delete lightUniformBuffers[i];
-    }
-    delete descManager;
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-    {
-        vkDestroySemaphore(context.vulkanDevice->logicalDevice, renderFinishedSemaphores[i], nullptr);
-        vkDestroyFence(context.vulkanDevice->logicalDevice, inFlightFences[i], nullptr);
-        vkDestroySemaphore(context.vulkanDevice->logicalDevice, imageAvailableSemaphores[i], nullptr);
+        vkDeviceWaitIdle(context.device);
     }
 
-    delete cmdBuffer;
+    // Cleanup ImGui BEFORE descriptor manager
+    ImGui_ImplVulkan_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+
+    // Cleanup ImGui descriptor manager
+    if (imguiDesc != nullptr)
+    {
+        delete imguiDesc;
+        imguiDesc = nullptr;
+    }
 }
 
-void Application::run()
+void Application::runLoop()
 {
     while (!glfwWindowShouldClose(context.window))
     {
         glfwPollEvents();
-        layer->run();
+
+        //Aquire Image and do syncronisation
+        uint32_t imgInd = beginDraw();
+
+        // Start the Dear ImGui frame
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+        onUIRender();
+
+        ImGui::Begin("Stats");
+        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io->Framerate, io->Framerate);
+        ImGui::End();
+        ImGui::Render();
 
         // Draw the frame
-        Draw();
+        run(imgInd);
+
+        // End the Draw submit the frame
+        endDraw(imgInd);
     }
 
     vkDeviceWaitIdle(context.device);
 }
 
-void Application::updateUniformBuffer(uint32_t currentImage, const lightUBO &lightUBO)
+uint32_t Application::beginDraw()
 {
-    static auto startTime = std::chrono::high_resolution_clock::now();
+    float currentDelta = static_cast<float>(glfwGetTime());
+    deltaTime = currentDelta - lastDelta;
+    lastDelta = currentDelta;
 
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+    vkWaitForFences(context.device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
+    vkResetFences(context.device, 1, &inFlightFences[currentFrame]);
 
-    uniformBufferObject ubo{};
-    ubo.model = glm::mat4(1.0f); // glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    // ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.view = camera->GetViewMatrix();
-    // ubo.proj = glm::perspective(glm::radians(45.0f), vulkanSwapChain.swapchainExtent.width / (float)vulkanSwapChain.swapchainExtent.height, 0.1f, 10.f);
-    ubo.proj = glm::perspective(glm::radians(camera->Zoom), (float)vulkanSwapChain.swapchainExtent.width / (float)vulkanSwapChain.swapchainExtent.height, 0.1f, 20.f);
-    ubo.proj[1][1] *= -1;
+    uint32_t imageIndex;
+    VkResult result = vkAcquireNextImageKHR(context.device, vulkanSwapChain.swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
 
-    uniformBuffers[currentFrame]->upload(&ubo, true);
-    lightUniformBuffers[currentFrame]->upload(&lightUBO, true);
+    // Handle out-of-date swapchain by recreating and retrying
+    while (result == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+        ImGui_ImplVulkan_SetMinImageCount(vulkanSwapChain.imageCount);
+        vulkanSwapChain.recreateSwapChain(renderPass->renderPass);
+        result = vkAcquireNextImageKHR(context.device, vulkanSwapChain.swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+    }
+
+    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+        throw std::runtime_error("failed to aquire swap chain image!");
+
+    processInput(context.window);
+
+    return imageIndex;
 }
 
 /*
@@ -329,97 +205,8 @@ At a high level, rendering a frame in Vulkan consists of a common set of steps:
     Submit the recorded command buffer
     Present the swap chain image
 */
-void Application::Draw()
+void Application::endDraw(uint32_t imgInd)
 {
-    float currentDelta = static_cast<float>(glfwGetTime());
-    deltaTime = currentDelta - lastDelta;
-    lastDelta = currentDelta;
-
-    vkWaitForFences(context.device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
-
-    uint32_t imageIndex;
-    VkResult result = vkAcquireNextImageKHR(context.device, vulkanSwapChain.swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
-    if (result == VK_ERROR_OUT_OF_DATE_KHR)
-    {
-        ImGui_ImplVulkan_SetMinImageCount(vulkanSwapChain.imageCount);
-        vulkanSwapChain.recreateSwapChain(renderPass->renderPass);
-        return;
-    }
-    else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
-        throw std::runtime_error("failed to aquire swap chain image!");
-
-    processInput(context.window);
-    // updateUniformBuffer(currentFrame);
-
-    // Start the Dear ImGui frame
-    ImGui_ImplVulkan_NewFrame();
-    ImGui_ImplGlfw_NewFrame();
-    ImGui::NewFrame();
-
-    // Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
-    static ImVec4 clear_color = ImVec4(0.35f, 0.25f, 0.30f, 1.00f);
-    {
-        static float f = 0.0f;
-        static int counter = 0;
-        static bool show_demo_window = false;
-        static bool show_another_window = false;
-        static glm::vec3 lightPos = glm::vec3(0.0f, 0.0f, 7.0f);
-        static glm::vec3 intensities = glm::vec3(1.0f, 0.0f, 1.0f);
-        static float atten = 1;
-        static float ambCoe = 1;
-
-        ImGui::Begin("Hello, world!"); // Create a window called "Hello, world!" and append into it.
-
-        ImGui::Text("This is some useful text.");          // Display some text (you can use a format strings too)
-        ImGui::Checkbox("Demo Window", &show_demo_window); // Edit bools storing our window open/close state
-        ImGui::Checkbox("Another Window", &show_another_window);
-
-        ImGui::SliderFloat("float", &f, 0.0f, 1.0f);             // Edit 1 float using a slider from 0.0f to 1.0f
-        ImGui::ColorEdit3("clear color", (float *)&clear_color); // Edit 3 floats representing a color
-
-        ImGui::BeginGroup();
-        ImGui::Text("Light Data");
-        ImGui::SliderFloat3("light Position", (float *)&lightPos, -100.0f, 100.0f);
-        ImGui::ColorEdit3("color", (float *)&intensities);
-        ImGui::SliderFloat("attenuation", (float *)&atten, -30.0f, 30.0f);
-        ImGui::SliderFloat("AmbientCoefficient", (float *)&ambCoe, -30.0f, 30.0f);
-        ImGui::EndGroup();
-
-        if (ImGui::Button("Button")) // Buttons return true when clicked (most widgets return true when edited/activated)
-            counter++;
-        ImGui::SameLine();
-        ImGui::Text("counter = %d", counter);
-
-        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io->Framerate, io->Framerate);
-        ImGui::End();
-
-        //std::cout << "Light data(Pos, intensity) " << lightPos.x << " " << lightPos.y << " " << lightPos.z << ", "
-          //        << intensities.x << " " << intensities.y << " " << intensities.z << std::endl;
-        lightUBO ubo{};
-        ubo.position = lightPos;
-        ubo.intensities = intensities;
-        ubo.attenuation = atten;
-        ubo.ambientCoefficient = ambCoe;
-        updateUniformBuffer(currentFrame, ubo);
-    }
-
-    // Rendering
-    ImGui::Render();
-
-    vkResetFences(context.device, 1, &inFlightFences[currentFrame]);
-    VkBuffer vertexBuffers[] = {vertexBuffer->handle()};
-    VkDeviceSize offsets[] = {0};
-    cmdBuffer->recordCommandBuffer(
-        cmdBuffer->commandBuffers[currentFrame],
-        pipeline->pipeline,
-        renderPass->renderPass,
-        vulkanSwapChain.swapchainFramebuffers[imageIndex],
-        vulkanSwapChain.swapchainExtent,
-        {{clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w}},
-        vertexBuffers, offsets, indexBuffer->handle(), indicesSize, // model->getIndices().size(),
-        descManager->handle()[currentFrame], pipeline->getPipelineLayout(),
-        ImGui::GetDrawData());
-
     // submitting the cmd buffer
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -446,10 +233,10 @@ void Application::Draw()
     VkSwapchainKHR swapchains[] = {vulkanSwapChain.swapChain};
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = swapchains;
-    presentInfo.pImageIndices = &imageIndex;
+    presentInfo.pImageIndices = &imgInd;
     presentInfo.pResults = nullptr;
 
-    result = vkQueuePresentKHR(context.presentQueue, &presentInfo);
+    VkResult result = vkQueuePresentKHR(context.presentQueue, &presentInfo);
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || context.framebufferResized)
     {
         context.framebufferResized = false;

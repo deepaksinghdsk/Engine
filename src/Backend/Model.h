@@ -8,6 +8,8 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/hash.hpp>
 
+#include <tiny_obj_loader.h>
+
 class Model
 {
 public:
@@ -33,9 +35,9 @@ public:
             return bindingDescription;
         }
 
-        static std::array<VkVertexInputAttributeDescription, 4> getAttributeDescriptions()
+        static std::vector<VkVertexInputAttributeDescription> getAttributeDescriptions()
         {
-            std::array<VkVertexInputAttributeDescription, 4> attributeDescriptions{};
+            std::vector<VkVertexInputAttributeDescription> attributeDescriptions{4};
             attributeDescriptions[0].binding = 0;
             attributeDescriptions[0].location = 0;
             attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
@@ -60,6 +62,83 @@ public:
         }
     };
 
+    struct skyBoxVertex
+    {
+        glm::vec3 position;
+
+        static VkVertexInputBindingDescription getBindingDesc()
+        {
+            VkVertexInputBindingDescription bindingDesc{};
+            bindingDesc.binding = 0;
+            bindingDesc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+            bindingDesc.stride = sizeof(skyBoxVertex);
+            return bindingDesc;
+        }
+
+        static std::vector<VkVertexInputAttributeDescription> getAttributeDesc()
+        {
+            std::vector<VkVertexInputAttributeDescription> attribDesc{1};
+            attribDesc[0].binding = 0;
+            attribDesc[0].location = 0;
+            attribDesc[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+            attribDesc[0].offset = offsetof(skyBoxVertex, position);
+
+            return attribDesc;
+        }
+    };
+
+    const std::vector<skyBoxVertex> skyBoxVertices = {
+        // positions
+        {{-1.0f, 1.0f, -1.0f}},
+        {{-1.0f, -1.0f, -1.0f}},
+        {{1.0f, -1.0f, -1.0f}},
+        {{1.0f, -1.0f, -1.0f}},
+        {{1.0f, 1.0f, -1.0f}},
+        {{-1.0f, 1.0f, -1.0f}},
+
+        {{-1.0f, -1.0f, 1.0f}},
+        {{-1.0f, -1.0f, -1.0f}},
+        {{-1.0f, 1.0f, -1.0f}},
+        {{-1.0f, 1.0f, -1.0f}},
+        {{-1.0f, 1.0f, 1.0f}},
+        {{-1.0f, -1.0f, 1.0f}},
+
+        {{1.0f, -1.0f, -1.0f}},
+        {{1.0f, -1.0f, 1.0f}},
+        {{1.0f, 1.0f, 1.0f}},
+        {{1.0f, 1.0f, 1.0f}},
+        {{1.0f, 1.0f, -1.0f}},
+        {{1.0f, -1.0f, -1.0f}},
+
+        {{-1.0f, -1.0f, 1.0f}},
+        {{-1.0f, 1.0f, 1.0f}},
+        {{1.0f, 1.0f, 1.0f}},
+        {{1.0f, 1.0f, 1.0f}},
+        {{1.0f, -1.0f, 1.0f}},
+        {{-1.0f, -1.0f, 1.0f}},
+
+        {{-1.0f, 1.0f, -1.0f}},
+        {{1.0f, 1.0f, -1.0f}},
+        {{1.0f, 1.0f, 1.0f}},
+        {{1.0f, 1.0f, 1.0f}},
+        {{-1.0f, 1.0f, 1.0f}},
+        {{-1.0f, 1.0f, -1.0f}},
+
+        {{-1.0f, -1.0f, -1.0f}},
+        {{-1.0f, -1.0f, 1.0f}},
+        {{1.0f, -1.0f, -1.0f}},
+        {{1.0f, -1.0f, -1.0f}},
+        {{-1.0f, -1.0f, 1.0f}},
+        {{1.0f, -1.0f, 1.0f}}
+    };
+
+    struct Submesh
+    {
+        uint32_t firstIndex; // offset
+        uint32_t indexCount;
+        uint32_t materialIndex;
+    };
+
 public:
     Model() = default;
     ~Model();
@@ -69,12 +148,16 @@ public:
 
     void loadModel(std::string MODEL_PATH);
 
-    const std::vector<Vertex>& getVertices() { return vertices; }
-    const std::vector<uint32_t>& getIndices() { return indices; }
+    const std::vector<Vertex> &getVertices() { return vertices; }
+    const std::vector<uint32_t> &getIndices() { return indices; }
+    const std::vector<Submesh> &getSubmeshes() { return submeshes; }
+    const tinyobj::material_t &getMaterial(int matInd) { return m_materials[matInd]; }
 
 private:
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
+    std::vector<Submesh> submeshes;
+    std::vector<tinyobj::material_t> m_materials;
 };
 
 namespace std

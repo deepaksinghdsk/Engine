@@ -31,7 +31,16 @@ void Context::framebufferResizeCallback(GLFWwindow* window, int width, int heigh
 
 Context::~Context()
 {
+    // Destroy surface BEFORE destroying device
+    if (surface != VK_NULL_HANDLE)
+    {
+        vkDestroySurfaceKHR(instance, surface, nullptr);
+        surface = VK_NULL_HANDLE;
+    }
+
+    // Now destroy device
     delete vulkanDevice;
+    vulkanDevice = nullptr;
 
     if (enableValidationLayers)
     {

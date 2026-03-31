@@ -41,28 +41,6 @@ protected:
 
     ImGuiIO *io;
 
-    /*  const std::vector<Vertex> vertices = {
-         {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}}, // bottom left - red
-         {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},  // bottom right - green
-         {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},   // top right - blue
-         {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},  // top left - yellow
-
-         {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-         {{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-         {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-         {{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}}
-     };
-
-     const std::vector<uint16_t> indices = {
-         0, 1, 2, // first triangle
-         2, 3, 0,  // second triangle
-
-         4, 5, 6,
-         6, 7, 4
-     }; */
-
-
-
 public:
     Application();
     //Application(Application *layer);

@@ -108,7 +108,8 @@ void DescriptorManager::createDescriptorSets(const int MaxFramesInFlight, const 
             {
                 descriptorWrite.pBufferInfo = &res.bufferInfo;
             }
-            else if (res.descBinding.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+            else if (res.descBinding.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
+                     res.descBinding.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE )
             {
                 descriptorWrite.pImageInfo = res.imageInfos.data();
             }

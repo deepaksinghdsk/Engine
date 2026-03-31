@@ -3,10 +3,9 @@
 
 VulkanSwapChain::~VulkanSwapChain()
 {
-    if (surface != VK_NULL_HANDLE)
-        vkDestroySurfaceKHR(instance, surface, nullptr);
-
-    surface = VK_NULL_HANDLE;
+    // Surface is owned by Context, not VulkanSwapChain
+    // Do NOT destroy surface here - it will be destroyed by Context
+    cleanup();
 }
 
 void VulkanSwapChain::setContext(VkInstance instance, VkDevice device, Context &context)
@@ -98,7 +97,7 @@ void VulkanSwapChain::create(int width, int height, CommandBuffer *cmdBuffer)
     swapchainCI.imageColorSpace = colorSpace;
     swapchainCI.imageExtent = swapchainExtent;
     swapchainCI.imageArrayLayers = 1;
-    swapchainCI.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    swapchainCI.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     swapchainCI.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     swapchainCI.queueFamilyIndexCount = 0;
     swapchainCI.preTransform = surfCaps.currentTransform;
@@ -123,8 +122,7 @@ void VulkanSwapChain::createDepthImage()
                                                            VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
     depthImage->createImage(swapchainExtent.width,
                             swapchainExtent.width,
-                            VK_IMAGE_LAYOUT_UNDEFINED,
-                            depthFormat, VK_IMAGE_TILING_OPTIMAL,
+                            depthFormat,
                             VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
                             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     depthImage->transitionImageLayout(m_cmdBuffer->getCmdPool(),
@@ -140,11 +138,21 @@ void VulkanSwapChain::createImageViews()
     images.resize(imageCount);
     vkGetSwapchainImagesKHR(device, swapChain, &imageCount, images.data());
 
+    for(VkImage &img : images)
+    {
+        imgs.push_back(new Image(context, img));
+    }
+
+    for(Image *img : imgs)
+    {
+        img->createImageView(VK_IMAGE_VIEW_TYPE_2D, colorFormat);
+    }
+
     // Now get the swapchain image buffers containing the image and imageView
     imageViews.resize(imageCount);
     for (uint32_t i = 0; i < imageCount; i++)
     {
-        VkImageViewCreateInfo colorAttachmentView{};
+        /* VkImageViewCreateInfo colorAttachmentView{};
         colorAttachmentView.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         colorAttachmentView.pNext = NULL;
         colorAttachmentView.flags = 0;
@@ -161,7 +169,9 @@ void VulkanSwapChain::createImageViews()
         colorAttachmentView.subresourceRange.levelCount = 1;
 
         if (vkCreateImageView(device, &colorAttachmentView, nullptr, &imageViews[i]) != VK_SUCCESS)
-            std::runtime_error("Failed to create imageView");
+            std::runtime_error("Failed to create imageView"); */
+
+        imageViews[i] = imgs[i]->getImageView();
     }
 }
 

@@ -17,26 +17,17 @@ public:
     ~CommandBuffer();
 
     void createCommandPool();
-    void beginCmd( uint32_t currentFrame,
-        VkRenderPass &renderPass,
-        VkFramebuffer &swapchainFramebuffer,
-        VkExtent2D swapchainExtent,
-        VkClearColorValue clearColor);
-    void endCmd(uint32_t currentFrame);
 
-    void recordCommandBuffer(VkCommandBuffer commandBuffer,
-                             VkPipeline &pipeline,
-                             VkPipeline &skyboxPipeline, // skybox pipeline
-                             VkRenderPass &renderPass,
-                             VkFramebuffer &swapchainFramebuffer,
-                             VkExtent2D swapchainExtent,
-                             VkClearColorValue clearColor,
-                             VkBuffer vertexBuffers[], VkDeviceSize offsets[], VkBuffer indexBuffer, VkDeviceSize ibSize,
-                             VkBuffer skyboxVertexBuffers[], VkDeviceSize skyboxOffsets[], VkDeviceSize vbSize, // skybox data
-                             VkDescriptorSet descSet, VkPipelineLayout pipelineLayout, const std::vector<Model::Submesh> &submeshes,
-                             VkDescriptorSet skyboxDescSet, VkPipelineLayout skyboxPipelineLayout, // skybox desc sets
-                             const std::unordered_map<uint32_t, int> &matIndTexInd,
-                             ImDrawData *drawData);
+    void beginRenderPass(uint32_t currentFrame,
+                         VkRenderPass &renderPass,
+                         VkFramebuffer &framebuffer,
+                         VkExtent2D extent,
+                         VkClearColorValue clearColor);
+    void endRenderPass(uint32_t currentFrame);
+
+    void beginCmdbuffer(uint32_t currentFrame);
+    void endCmdbuffer(uint32_t currentFrame);
+
     VkCommandPool getCmdPool() const { return commandPool; }
 
     struct DrawData
@@ -48,6 +39,6 @@ private:
     VkCommandPool commandPool;
 
     Context &context; /*
-     RenderPass &renderPass;
-     VulkanSwapChain &swapchain; */
+    RenderPass &renderPass;
+ VulkanSwapChain &swapchain; */
 };

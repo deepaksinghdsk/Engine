@@ -10,7 +10,7 @@ Buffer *vertexBuffer;
 Buffer *indexBuffer;
 Buffer *skyboxVertexBuffer;
 
-DescriptorManager *descManager;
+DescriptorManager *modelDescManager;
 DescriptorManager *cubeMapDescriptor;
 
 Pipeline *pipeline;
@@ -47,9 +47,17 @@ struct lightUBO
     float ambientCoefficient;
 };
 
+// PushConstant
+struct DrawData
+{
+    uint32_t texIndex;
+};
+
 class Example : public Application
 {
 private:
+    VkBool32 glowData = false;
+    
 public:
     Example()
     {
@@ -90,7 +98,7 @@ public:
         }
 
         // Delete descriptor managers
-        delete descManager;
+        delete modelDescManager;
         delete cubeMapDescriptor;
 
         // Destroy pipeline layouts
@@ -244,9 +252,7 @@ public:
 
                 Image *texImage = new Image(&context);
                 texImage->createImage(texWidth, texHeight,
-                                      VK_IMAGE_LAYOUT_UNDEFINED,
                                       imageFormat,
-                                      VK_IMAGE_TILING_OPTIMAL,
                                       VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                                       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
@@ -326,9 +332,7 @@ public:
 
             cubeMapImage = new Image(&context);
             cubeMapImage->createImage(texWidth, texHeight,
-                                      VK_IMAGE_LAYOUT_UNDEFINED,
                                       VK_FORMAT_R8G8B8A8_UNORM,
-                                      VK_IMAGE_TILING_OPTIMAL,
                                       VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                                       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                                       6,
@@ -408,10 +412,10 @@ public:
                 resources[i].push_back(lightUBOres);
             }
 
-            descManager = new DescriptorManager(context);
-            descManager->createDescriptorSetLayout(bindings);
-            descManager->createDescriptorPool(MAX_FRAMES_IN_FLIGHT, bindings);
-            descManager->createDescriptorSets(MAX_FRAMES_IN_FLIGHT, resources);
+            modelDescManager = new DescriptorManager(context);
+            modelDescManager->createDescriptorSetLayout(bindings);
+            modelDescManager->createDescriptorPool(MAX_FRAMES_IN_FLIGHT, bindings);
+            modelDescManager->createDescriptorSets(MAX_FRAMES_IN_FLIGHT, resources);
         }
 
         // CubeMaps Descriptor set
@@ -452,14 +456,14 @@ public:
             cubeMapDescriptor->createDescriptorSets(MAX_FRAMES_IN_FLIGHT, resources);
         }
 
-        // Graphics Pipeline
+        // Model Graphics Pipeline
         {
-            VkDescriptorSetLayout setLayout = descManager->getDescSetLayout();
+            VkDescriptorSetLayout setLayout = modelDescManager->getDescSetLayout();
 
             VkPushConstantRange pushRange{};
             pushRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
             pushRange.offset = 0;
-            pushRange.size = sizeof(CommandBuffer::DrawData);
+            pushRange.size = sizeof(DrawData);
 
             // Pipeline layout: to pass on Uniform buffer and push Constant data to shaders
             VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
@@ -478,7 +482,7 @@ public:
             pipelineDesc.fragShaderLoc = "D:/Dev/Graphics Proj/Engine/res/shaders/frag.spv";
             pipelineDesc.layout = pipelineLayout;
             pipelineDesc.renderPass = renderPass->renderPass;
-            pipelineDesc.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+            //pipelineDesc.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
             pipelineDesc.vertexBinding = Model::Vertex::getBindingDescription();
             pipelineDesc.vertexAttrib = Model::Vertex::getAttributeDescriptions();
 
@@ -491,13 +495,18 @@ public:
         {
             VkDescriptorSetLayout setLayout = cubeMapDescriptor->getDescSetLayout();
 
+            VkPushConstantRange pushRange{};
+            pushRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            pushRange.offset = 0;
+            pushRange.size = sizeof(glowData);
+
             // Pipeline layout: to pass on Uniform buffer and push Constant data to shaders
             VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
             pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
             pipelineLayoutInfo.setLayoutCount = 1;
             pipelineLayoutInfo.pSetLayouts = &setLayout;
-            pipelineLayoutInfo.pushConstantRangeCount = 0;
-            pipelineLayoutInfo.pPushConstantRanges = nullptr;
+            pipelineLayoutInfo.pushConstantRangeCount = 1;
+            pipelineLayoutInfo.pPushConstantRanges = &pushRange;
             if (vkCreatePipelineLayout(context.device, &pipelineLayoutInfo, nullptr, &cubeMapPipelineLayout) != VK_SUCCESS)
             {
                 throw std::runtime_error("failed to create pipeline layout!");
@@ -533,6 +542,7 @@ public:
 
         ImGui::SliderFloat("float", &f, 0.0f, 1.0f);             // Edit 1 float using a slider from 0.0f to 1.0f
         ImGui::ColorEdit3("clear color", (float *)&clear_color); // Edit 3 floats representing a color
+        ImGui::Checkbox("Glow", (bool *) &glowData);
 
         ImGui::BeginGroup();
         ImGui::Text("Light Data");
@@ -581,18 +591,13 @@ public:
         scissor.extent = vulkanSwapChain.swapchainExtent;
         vkCmdSetScissor(cmdBuffer->commandBuffers[currentFrame], 0, 1, &scissor);
 
-        struct DrawData
-        {
-            uint32_t texIndex;
-        };
-
         // Model pbr rendering
         {
             vkCmdBindPipeline(cmdBuffer->commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->pipeline);
             vkCmdBindVertexBuffers(cmdBuffer->commandBuffers[currentFrame], 0, 1, vertexBuffers, offsets);
             vkCmdBindIndexBuffer(cmdBuffer->commandBuffers[currentFrame], indexBuffer->handle(), 0, VK_INDEX_TYPE_UINT32);
             vkCmdBindDescriptorSets(cmdBuffer->commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                    pipeline->getPipelineLayout(), 0, 1, &descManager->handle()[currentFrame], 0, nullptr);
+                                    pipeline->getPipelineLayout(), 0, 1, &modelDescManager->handle()[currentFrame], 0, nullptr);
             for (const Model::Submesh &sm : c_model->getSubmeshes())
             {
                 DrawData data{};
@@ -611,6 +616,7 @@ public:
             vkCmdBindVertexBuffers(cmdBuffer->commandBuffers[currentFrame], 0, 1, skyboxVertexBuffers, offsets);
             vkCmdBindDescriptorSets(cmdBuffer->commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
                                     cubeMapPipeline->getPipelineLayout(), 0, 1, &cubeMapDescriptor->handle()[currentFrame], 0, nullptr);
+            vkCmdPushConstants(cmdBuffer->commandBuffers[currentFrame], pipeline->getPipelineLayout(), VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(glowData), &glowData);
             vkCmdDraw(cmdBuffer->commandBuffers[currentFrame], static_cast<uint32_t>(c_model->skyBoxVertices.size()), 1, 0, 0);
         }
 

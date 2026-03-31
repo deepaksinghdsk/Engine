@@ -41,7 +41,7 @@ include_directories(${GLM_INCLUDE_DIR})
 include_directories(${THIRDPARTY_INCLUDE_DIR}) 
 
 set(VULKAN_ENGINE_SOURCES
-                    app/src/sandbox.cpp
+                    app/src/Bloom.cpp
                     src/Backend/Application.cpp
                     src/Backend/Context.cpp
                     src/Backend/VulkanSwapChain.cpp

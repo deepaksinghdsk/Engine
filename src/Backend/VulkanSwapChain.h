@@ -30,7 +30,7 @@ public:
     std::vector<VkImage> images{};
     std::vector<VkImageView> imageViews{};
     std::vector<VkFramebuffer> swapchainFramebuffers;
-
+    
     void setContext(VkInstance instance, VkDevice device, Context &context);
     void initSurface(GLFWwindow *window);
     void create(int width, int height, CommandBuffer* cmdBuffer);
@@ -40,16 +40,18 @@ public:
     void recreateSwapChain(VkRenderPass &renderPass);
     VkResult aquireNextImage();
     VkResult queuePresent();
-
-    Image* getDepthImage() const {return depthImage;} 
-
+    
+    Image* getDepthImage() const {return depthImage;}
+    std::vector<Image*> getSwapChainImages() const {return imgs;};
+    
     void cleanup();
-
-private:
+    
+    private:
     VkInstance instance{VK_NULL_HANDLE};
     VkDevice device{VK_NULL_HANDLE};
     VkPhysicalDevice physicalDevice{VK_NULL_HANDLE};
     Image *depthImage;
+    std::vector<Image*> imgs;
     CommandBuffer* m_cmdBuffer;
 
     Context *context;

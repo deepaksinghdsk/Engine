@@ -30,7 +30,7 @@ public:
     Pipeline(const VkDevice &device);
     ~Pipeline();
 
-    void build(const PipelineDesc& desc);
+    void build(const PipelineDesc desc);
     void initPipeline(const VkDescriptorSetLayout& descSetLayout, VkRenderPass *renderPass, VkExtent2D swapchainExtent);
 
     VkPipelineLayout getPipelineLayout() const {return pipelineLayout;}

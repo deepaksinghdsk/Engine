@@ -52,7 +52,7 @@ public:
     DescriptorManager(const Context &ctx);
     ~DescriptorManager();
 
-    // Non-copyable, movable
+    // Non-copyable, Non-movable
     DescriptorManager(const DescriptorManager &) = delete;
     DescriptorManager &operator=(const DescriptorManager &) = delete;
     DescriptorManager(DescriptorManager &&other) noexcept;

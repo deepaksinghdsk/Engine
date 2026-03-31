@@ -6,18 +6,27 @@
 #include <stb_image.h>
 #endif
 
+#include "Backend/VulkanInitializers.hpp"
+
 Buffer *vertexBuffer;
 Buffer *indexBuffer;
 Buffer *skyboxVertexBuffer;
 
-DescriptorManager *descManager;
+Buffer *fullscreenQuadVertexBuffer;
+
+DescriptorManager *modelDescManager;
 DescriptorManager *cubeMapDescriptor;
+DescriptorManager *glowDescriptor;
+DescriptorManager *vertBlurDescriptor;
+DescriptorManager *horiBlurDescriptor;
+DescriptorManager *compositeDescriptor;
 
-Pipeline *pipeline;
+Pipeline *modelPipeline;
 Pipeline *cubeMapPipeline;
-
-VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
-VkPipelineLayout cubeMapPipelineLayout = VK_NULL_HANDLE;
+Pipeline *glowPipeline;
+Pipeline *vertBlurPipeline;
+Pipeline *horiBlurPipeline;
+Pipeline *compositePipeline;
 
 std::vector<Buffer *> uniformBuffers;
 std::vector<Buffer *> lightUniformBuffers;
@@ -25,16 +34,6 @@ std::unordered_map<uint32_t, int> matIndTexInd;
 
 std::vector<Image *> texImages;
 Image *cubeMapImage;
-
-// Render comps for Bloom rendering
-RenderPass *offscreenRenderpass;
-RenderPass *renderpass;
-std::array<VkFramebuffer, 2> offScreenFramebuffers;
-
-VkImage offScreenImage;
-VkImageView offScreenImageview;
-VkImage finalImage;
-VkImageView finalImageview;
 
 Model *c_model;
 Camera *camera = nullptr;
@@ -56,9 +55,105 @@ struct lightUBO
 
 class Bloom : public Application
 {
+private:
+    struct FrameBuffer
+    {
+    public:
+        VkFramebuffer frameBuffer = nullptr;
+        Image *color, *depth;
+        // As this FB will also be used input for next pass
+        // DescriptorManager *descriptor;
+
+        FrameBuffer(Context *ctx)
+        {
+            color = new Image(ctx);
+            depth = new Image(ctx);
+            // descriptor = new DescriptorManager(*ctx);
+        }
+
+        ~FrameBuffer()
+        {
+            delete color;
+            delete depth;
+        }
+    };
+
+    struct OffScreenPass
+    {
+    public:
+        int32_t width, height;
+        VkRenderPass renderPass = nullptr;
+        VkSampler sampler;
+        std::vector<FrameBuffer *> frameBuffers{3};
+
+        OffScreenPass(Context *ctx)
+        {
+            frameBuffers[0] = new FrameBuffer(ctx);
+            frameBuffers[1] = new FrameBuffer(ctx);
+            frameBuffers[2] = new FrameBuffer(ctx);
+        }
+
+        ~OffScreenPass()
+        {
+            for (uint32_t i = 0; i < 3; i++)
+                delete frameBuffers[i];
+        }
+    };
+    OffScreenPass *offScreenPass;
+    VkRenderPass imguiRenderPass = nullptr; // Render pass for ImGui composition (loads content, doesn't clear)
+
+    struct fullscreenQuadVertex
+    {
+        glm::vec3 position;
+
+        static VkVertexInputBindingDescription getBindingDesc()
+        {
+            VkVertexInputBindingDescription bindingDesc{};
+            bindingDesc.binding = 0;
+            bindingDesc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+            bindingDesc.stride = sizeof(fullscreenQuadVertex);
+            return bindingDesc;
+        }
+
+        static std::vector<VkVertexInputAttributeDescription> getAttributeDesc()
+        {
+            std::vector<VkVertexInputAttributeDescription> attribDesc{1};
+            attribDesc[0].binding = 0;
+            attribDesc[0].location = 0;
+            attribDesc[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+            attribDesc[0].offset = offsetof(fullscreenQuadVertex, position);
+
+            return attribDesc;
+        }
+    };
+
+    const std::vector<fullscreenQuadVertex> fullscreenQuadVertices =
+        {
+            {{-1.0f, 1.0f, 0.0f}},  // 1: bottom-left
+            {{-1.0f, -1.0f, 0.0f}}, // 0: top-left
+            {{1.0f, 1.0f, 0.0f}},   // 2: bottom-right
+            {{-1.0f, -1.0f, 0.0f}}, // 3: top-left
+            {{1.0f, 1.0f, 0.0f}},   // 4: bottom-right
+            {{1.0f, -1.0f, 0.0f}}}; // 5: top-right
+
+    struct drawData
+    {
+        float lumThreshold = 0.2;
+    } glowData;
+
+    struct compositeData
+    {
+        VkBool32 toneMapping = true;
+        VkBool32 gamma = true;
+    } compData;
+
+    std::vector<std::string> items = {"Scene", "Glow", "blur", "Bloom"};
+    int selected_item = 0;
+
 public:
     Bloom()
     {
+        offScreenPass = new OffScreenPass(&context);
         init();
     }
 
@@ -74,11 +169,29 @@ public:
         delete vertexBuffer;
         delete indexBuffer;
         delete skyboxVertexBuffer;
+        delete fullscreenQuadVertexBuffer;
 
         // Delete pipelines
-        delete pipeline;
+        delete modelPipeline;
         delete cubeMapPipeline;
+        delete glowPipeline;
+        delete vertBlurPipeline;
+        delete horiBlurPipeline;
+        delete compositePipeline;
+
+        // Delete RenderPasses
         delete renderPass;
+        vkDestroyRenderPass(context.device, offScreenPass->renderPass, nullptr);
+        vkDestroyRenderPass(context.device, imguiRenderPass, nullptr);
+        vkDestroySampler(context.device, offScreenPass->sampler, nullptr);
+
+        // Delete FrameBuffers
+        for (uint16_t i = 0; i < 3; i++)
+        {
+            vkDestroyFramebuffer(context.device, offScreenPass->frameBuffers[i]->frameBuffer, nullptr);
+        }
+
+        delete offScreenPass;
 
         // Cleanup swapchain
         vulkanSwapChain.cleanup();
@@ -96,14 +209,12 @@ public:
         }
 
         // Delete descriptor managers
-        delete descManager;
+        delete modelDescManager;
         delete cubeMapDescriptor;
-
-        // Destroy pipeline layouts
-        if (pipelineLayout != VK_NULL_HANDLE)
-            vkDestroyPipelineLayout(context.device, pipelineLayout, nullptr);
-        if (cubeMapPipelineLayout != VK_NULL_HANDLE)
-            vkDestroyPipelineLayout(context.device, cubeMapPipelineLayout, nullptr);
+        delete glowDescriptor;
+        delete vertBlurDescriptor;
+        delete horiBlurDescriptor;
+        delete compositeDescriptor;
 
         // Destroy synchronization objects
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
@@ -117,54 +228,624 @@ public:
         delete cmdBuffer;
     }
 
-    void prepareRenderpass()
+    // For rendering the Scene, then its color attachment will then be sampled from
+    void prepareOffScreenFramebuffer(FrameBuffer *frameBuffer)
     {
-        std::vector<VkSubpassDependency> dependencies;
+        // color attachment
+        frameBuffer->color = new Image(&context);
+        frameBuffer->color->createImage(context.width, context.height,
+                                        VK_FORMAT_R8G8B8A8_UNORM,
+                                        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        frameBuffer->color->createImageView(VK_IMAGE_VIEW_TYPE_2D, VK_FORMAT_R8G8B8A8_UNORM);
 
-        VkSubpassDependency dependency{};
-        dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-        dependency.dstSubpass = 0;
-        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-        dependency.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        // Create depth attachment
+        frameBuffer->depth = new Image(&context);
+        frameBuffer->depth->createImage(context.width, context.height,
+                                        vulkanSwapChain.getDepthImage()->getFormat(),
+                                        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        VkFormat depthFormat = vulkanSwapChain.getDepthImage()->getFormat();
+        frameBuffer->depth->createImageView(VK_IMAGE_VIEW_TYPE_2D,
+                                            depthFormat,
+                                            VK_IMAGE_ASPECT_DEPTH_BIT | (frameBuffer->depth->hasStencilComponent(depthFormat) ? VK_IMAGE_ASPECT_STENCIL_BIT : 0));
 
-        renderpass = new RenderPass(context, vulkanSwapChain);
-        renderpass->createCustomRenderPass(vulkanSwapChain.getDepthImage()->getFormat(), dependencies);
+        VkImageView imageViews[2];
+        imageViews[0] = frameBuffer->color->getImageView();
+        imageViews[1] = frameBuffer->depth->getImageView();
+
+        VkFramebufferCreateInfo fbufCreateInfo = vkd::initializers::framebufferCreateInfo();
+        fbufCreateInfo.attachmentCount = 2;
+        fbufCreateInfo.pAttachments = imageViews;
+        fbufCreateInfo.height = context.height;
+        fbufCreateInfo.width = context.width;
+        fbufCreateInfo.renderPass = offScreenPass->renderPass;
+        fbufCreateInfo.layers = 1;
+
+        if (vkCreateFramebuffer(context.device, &fbufCreateInfo, nullptr, &frameBuffer->frameBuffer) != VK_SUCCESS)
+            throw std::exception("Unable to create offscreenPass FrameBuffer");
     }
 
-    void prepareFramebuffer()
+    // Used for the Vert and Hori blur
+    void prepareOffScreen()
     {
+        offScreenPass->width = context.width;
+        offScreenPass->height = context.height;
 
-        VkImageViewCreateInfo colorAttachmentView{};
-        colorAttachmentView.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        colorAttachmentView.pNext = NULL;
-        colorAttachmentView.flags = 0;
-        colorAttachmentView.image = images[i];
-        colorAttachmentView.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        colorAttachmentView.format = colorFormat;
-        colorAttachmentView.components = {
+        // Separate "Render pass" for offscreen oprations
+        // color buffer Attachement
+        VkAttachmentDescription colorAttachment{};
+        colorAttachment.format = VK_FORMAT_R8G8B8A8_UNORM;
+        colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        colorAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-        };
-        colorAttachmentView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        colorAttachmentView.subresourceRange.baseArrayLayer = 0;
-        colorAttachmentView.subresourceRange.baseMipLevel = 0;
-        colorAttachmentView.subresourceRange.layerCount = 1;
-        colorAttachmentView.subresourceRange.levelCount = 1;
+        // depth Attachment description
+        VkAttachmentDescription depthAttachment{};
+        depthAttachment.format = vulkanSwapChain.getDepthImage()->getFormat();
+        depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-        if (vkCreateImageView(context.device, &colorAttachmentView, nullptr, &imageViews[i]) != VK_SUCCESS)
-            std::runtime_error("Failed to create imageView");
+        // References to the Attachments for use in subpasses
+        VkAttachmentReference colorAttachmentRef{};
+        colorAttachmentRef.attachment = 0; // index of the Attachment to be refrenced
+        colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+        VkAttachmentReference depthAttachmentRef{};
+        depthAttachmentRef.attachment = 1;
+        depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+        VkSubpassDescription subpass{};
+        subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        subpass.colorAttachmentCount = 1;
+        // Index of the attachment in this array is referenced in frag shader using directive
+        // layout(location = 0) out vec4 outColor;
+        subpass.pColorAttachments = &colorAttachmentRef;
+        subpass.pDepthStencilAttachment = &depthAttachmentRef;
+
+        std::array<VkSubpassDependency, 2> dependencies{};
+
+        dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+        dependencies[0].dstSubpass = 0;
+        dependencies[0].srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependencies[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        dependencies[0].dependencyFlags = 0;
+
+        dependencies[1].srcSubpass = 0;
+        dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+        dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependencies[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        dependencies[1].dependencyFlags = 0;
+
+        std::array<VkAttachmentDescription, 2> attachments = {colorAttachment, depthAttachment};
+
+        VkRenderPassCreateInfo renderPassInfo{};
+        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+        renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+        renderPassInfo.pAttachments = attachments.data();
+        renderPassInfo.subpassCount = 1;
+        renderPassInfo.pSubpasses = &subpass;
+        renderPassInfo.dependencyCount = static_cast<uint32_t>(dependencies.size());
+        renderPassInfo.pDependencies = dependencies.data();
+
+        if (vkCreateRenderPass(context.device, &renderPassInfo, nullptr, &offScreenPass->renderPass) != VK_SUCCESS)
+            throw std::runtime_error("failed to create render pass!");
+
+        VkSamplerCreateInfo samplerCI = vkd::initializers::samplerCreateInfo();
+        samplerCI.magFilter = VK_FILTER_LINEAR;
+        samplerCI.minFilter = VK_FILTER_LINEAR;
+        samplerCI.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        samplerCI.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        samplerCI.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        samplerCI.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        samplerCI.mipLodBias = 0.0f;
+        samplerCI.maxAnisotropy = 1.0f;
+        samplerCI.minLod = 0.0f;
+        samplerCI.maxLod = 1.0f;
+        samplerCI.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+        if (vkCreateSampler(context.device, &samplerCI, nullptr, &offScreenPass->sampler) != VK_SUCCESS)
+            throw std::runtime_error("failed to create render pass!");
+
+        prepareOffScreenFramebuffer(offScreenPass->frameBuffers[0]);
+        prepareOffScreenFramebuffer(offScreenPass->frameBuffers[1]);
+        prepareOffScreenFramebuffer(offScreenPass->frameBuffers[2]);
+    }
+
+    void preparePipelines()
+    {
+        // Model Graphics Pipeline
+        {
+            VkDescriptorSetLayout setLayout = modelDescManager->getDescSetLayout();
+
+            VkPushConstantRange pushRange{};
+            pushRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            pushRange.offset = 0;
+            pushRange.size = sizeof(CommandBuffer::DrawData);
+
+            VkPipelineLayout modelPipelineLayout = VK_NULL_HANDLE;
+            // Pipeline layout: to pass on Uniform buffer and push Constant data to shaders
+            VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+            pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+            pipelineLayoutInfo.setLayoutCount = 1;
+            pipelineLayoutInfo.pSetLayouts = &setLayout;
+            pipelineLayoutInfo.pushConstantRangeCount = 1;
+            pipelineLayoutInfo.pPushConstantRanges = &pushRange;
+            if (vkCreatePipelineLayout(context.device, &pipelineLayoutInfo, nullptr, &modelPipelineLayout) != VK_SUCCESS)
+            {
+                throw std::runtime_error("failed to create modelPipeline layout!");
+            }
+
+            PipelineDesc pipelineDesc{};
+            pipelineDesc.vertShaderLoc = "D:/Dev/Graphics Proj/Engine/res/shaders/vert.spv";
+            pipelineDesc.fragShaderLoc = "D:/Dev/Graphics Proj/Engine/res/shaders/frag.spv";
+            pipelineDesc.layout = modelPipelineLayout;
+            // pipelineDesc.renderPass = renderPass->renderPass;
+            pipelineDesc.renderPass = offScreenPass->renderPass;
+            // pipelineDesc.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;  //WireFrame rendering
+            pipelineDesc.vertexBinding = Model::Vertex::getBindingDescription();
+            pipelineDesc.vertexAttrib = Model::Vertex::getAttributeDescriptions();
+
+            modelPipeline = new Pipeline(context.vulkanDevice->logicalDevice);
+            modelPipeline->build(pipelineDesc);
+        }
+
+        // CubeMap Graphics Pipeline
+        {
+            VkDescriptorSetLayout setLayout = cubeMapDescriptor->getDescSetLayout();
+
+            // Pipeline layout: to pass on Uniform buffer and push Constant data to shaders
+            VkPipelineLayout cubeMapPipelineLayout = VK_NULL_HANDLE;
+            VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+            pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+            pipelineLayoutInfo.setLayoutCount = 1;
+            pipelineLayoutInfo.pSetLayouts = &setLayout;
+            pipelineLayoutInfo.pushConstantRangeCount = 0;
+            pipelineLayoutInfo.pPushConstantRanges = nullptr;
+            if (vkCreatePipelineLayout(context.device, &pipelineLayoutInfo, nullptr, &cubeMapPipelineLayout) != VK_SUCCESS)
+            {
+                throw std::runtime_error("failed to create cubeMapPipeline layout!");
+            }
+
+            PipelineDesc pipelineDesc{};
+            pipelineDesc.vertShaderLoc = "D:/Dev/Graphics Proj/Engine/res/shaders/cubeMapVert.spv";
+            pipelineDesc.fragShaderLoc = "D:/Dev/Graphics Proj/Engine/res/shaders/cubeMapFrag.spv";
+            pipelineDesc.layout = cubeMapPipelineLayout;
+            pipelineDesc.renderPass = offScreenPass->renderPass;
+            // pipelineDesc.renderPass = renderPass->renderPass;
+            pipelineDesc.vertexBinding = Model::skyBoxVertex::getBindingDesc();
+            pipelineDesc.vertexAttrib = Model::skyBoxVertex::getAttributeDesc();
+            pipelineDesc.depthCompare = VK_COMPARE_OP_LESS_OR_EQUAL; // Skybox at far plane
+            pipelineDesc.depthWrite = false;                         // Don't write to depth buffer
+
+            cubeMapPipeline = new Pipeline(context.vulkanDevice->logicalDevice);
+            cubeMapPipeline->build(pipelineDesc);
+        }
+
+        // Glow pass Graphics pipeline
+        {
+            VkDescriptorSetLayout setLayout = glowDescriptor->getDescSetLayout();
+
+            VkPushConstantRange pushRange{};
+            pushRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            pushRange.size = sizeof(glowData);
+            pushRange.offset = 0;
+
+            // Pipeline layout: to pass on Uniform/Image buffer and push Constant data to shaders
+            VkPipelineLayout glowPipelineLayout = VK_NULL_HANDLE;
+            VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+            pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+            pipelineLayoutInfo.setLayoutCount = 1;
+            pipelineLayoutInfo.pSetLayouts = &setLayout;
+            pipelineLayoutInfo.pushConstantRangeCount = 1;
+            pipelineLayoutInfo.pPushConstantRanges = &pushRange;
+            if (vkCreatePipelineLayout(context.device, &pipelineLayoutInfo, nullptr, &glowPipelineLayout) != VK_SUCCESS)
+            {
+                throw std::runtime_error("failed to create horiBlurPipeline layout!");
+            }
+
+            PipelineDesc pipelineDesc{};
+            pipelineDesc.vertShaderLoc = "D:/Dev/Graphics Proj/Engine/res/shaders/fullscreenQuadVert.spv";
+            pipelineDesc.fragShaderLoc = "D:/Dev/Graphics Proj/Engine/res/shaders/glowFrag.spv";
+            pipelineDesc.layout = glowPipelineLayout;
+            // pipelineDesc.renderPass = renderPass->renderPass;
+            pipelineDesc.renderPass = offScreenPass->renderPass;
+            pipelineDesc.vertexBinding = fullscreenQuadVertex::getBindingDesc();
+            pipelineDesc.vertexAttrib = fullscreenQuadVertex::getAttributeDesc();
+            pipelineDesc.cullMode = VK_CULL_MODE_NONE; // Disable culling for fullscreen quad
+            // pipelineDesc.depthTest = false;                  // Disable depth test
+            // pipelineDesc.depthWrite = false;                 // Don't write to depth buffer
+
+            glowPipeline = new Pipeline(context.vulkanDevice->logicalDevice);
+            glowPipeline->build(pipelineDesc);
+        }
+
+        // Vertical Blur Graphics pipeline
+        {
+            VkDescriptorSetLayout setLayout = vertBlurDescriptor->getDescSetLayout();
+
+            // Pipeline layout: to pass on Uniform buffer and push Constant data to shaders
+            VkPipelineLayout vertBlurPipelineLayout = VK_NULL_HANDLE;
+            VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+            pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+            pipelineLayoutInfo.setLayoutCount = 1;
+            pipelineLayoutInfo.pSetLayouts = &setLayout;
+            pipelineLayoutInfo.pushConstantRangeCount = 0;
+            pipelineLayoutInfo.pPushConstantRanges = nullptr;
+            if (vkCreatePipelineLayout(context.device, &pipelineLayoutInfo, nullptr, &vertBlurPipelineLayout) != VK_SUCCESS)
+            {
+                throw std::runtime_error("failed to create vertBlurPipeline layout!");
+            }
+
+            PipelineDesc pipelineDesc{};
+            pipelineDesc.vertShaderLoc = "D:/Dev/Graphics Proj/Engine/res/shaders/fullscreenQuadVert.spv";
+            pipelineDesc.fragShaderLoc = "D:/Dev/Graphics Proj/Engine/res/shaders/vertBlurFrag.spv";
+            pipelineDesc.layout = vertBlurPipelineLayout;
+            // pipelineDesc.renderPass = renderPass->renderPass;
+            pipelineDesc.renderPass = offScreenPass->renderPass;
+            pipelineDesc.vertexBinding = fullscreenQuadVertex::getBindingDesc();
+            pipelineDesc.vertexAttrib = fullscreenQuadVertex::getAttributeDesc();
+            pipelineDesc.cullMode = VK_CULL_MODE_NONE; // Disable culling for fullscreen quad
+            // pipelineDesc.depthTest = false;                  // Disable depth test
+            // pipelineDesc.depthWrite = false;                 // Don't write to depth buffer
+
+            vertBlurPipeline = new Pipeline(context.vulkanDevice->logicalDevice);
+            vertBlurPipeline->build(pipelineDesc);
+        }
+
+        // Horizontal Blur Graphics pipeline
+        {
+            VkDescriptorSetLayout setLayout = horiBlurDescriptor->getDescSetLayout();
+
+            // Pipeline layout: to pass on Uniform buffer and push Constant data to shaders
+            VkPipelineLayout horiBlurPipelineLayout = VK_NULL_HANDLE;
+            VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+            pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+            pipelineLayoutInfo.setLayoutCount = 1;
+            pipelineLayoutInfo.pSetLayouts = &setLayout;
+            pipelineLayoutInfo.pushConstantRangeCount = 0;
+            pipelineLayoutInfo.pPushConstantRanges = nullptr;
+            if (vkCreatePipelineLayout(context.device, &pipelineLayoutInfo, nullptr, &horiBlurPipelineLayout) != VK_SUCCESS)
+            {
+                throw std::runtime_error("failed to create BlurPipeline layout!");
+            }
+
+            PipelineDesc pipelineDesc{};
+            pipelineDesc.vertShaderLoc = "D:/Dev/Graphics Proj/Engine/res/shaders/fullscreenQuadVert.spv";
+            pipelineDesc.fragShaderLoc = "D:/Dev/Graphics Proj/Engine/res/shaders/horiBlurFrag.spv";
+            pipelineDesc.layout = horiBlurPipelineLayout;
+            // pipelineDesc.renderPass = renderPass->renderPass;
+            pipelineDesc.renderPass = offScreenPass->renderPass;
+            pipelineDesc.vertexBinding = fullscreenQuadVertex::getBindingDesc();
+            pipelineDesc.vertexAttrib = fullscreenQuadVertex::getAttributeDesc();
+            pipelineDesc.cullMode = VK_CULL_MODE_NONE; // Disable culling for fullscreen quad
+            // pipelineDesc.depthTest = false;                  // Disable depth test
+            // pipelineDesc.depthWrite = false;                 // Don't write to depth buffer
+
+            horiBlurPipeline = new Pipeline(context.vulkanDevice->logicalDevice);
+            horiBlurPipeline->build(pipelineDesc);
+        }
+
+        // Composite pass Graphics pipeline
+        {
+            VkDescriptorSetLayout setLayout = compositeDescriptor->getDescSetLayout();
+
+            VkPushConstantRange pushRange{};
+            pushRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            pushRange.size = sizeof(compData);
+            pushRange.offset = 0;
+
+            // Pipeline layout: to pass on Uniform buffer and push Constant data to shaders
+            VkPipelineLayout comositePipelineLayout = VK_NULL_HANDLE;
+            VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+            pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+            pipelineLayoutInfo.setLayoutCount = 1;
+            pipelineLayoutInfo.pSetLayouts = &setLayout;
+            pipelineLayoutInfo.pushConstantRangeCount = 1;
+            pipelineLayoutInfo.pPushConstantRanges = &pushRange;
+            if (vkCreatePipelineLayout(context.device, &pipelineLayoutInfo, nullptr, &comositePipelineLayout) != VK_SUCCESS)
+            {
+                throw std::runtime_error("failed to create compositePipeline layout!");
+            }
+
+            PipelineDesc pipelineDesc{};
+            pipelineDesc.vertShaderLoc = "D:/Dev/Graphics Proj/Engine/res/shaders/fullscreenQuadVert.spv";
+            pipelineDesc.fragShaderLoc = "D:/Dev/Graphics Proj/Engine/res/shaders/compositeFrag.spv";
+            pipelineDesc.layout = comositePipelineLayout;
+            pipelineDesc.renderPass = renderPass->renderPass;
+            // pipelineDesc.renderPass = offScreenPass->renderPass;
+            pipelineDesc.vertexBinding = fullscreenQuadVertex::getBindingDesc();
+            pipelineDesc.vertexAttrib = fullscreenQuadVertex::getAttributeDesc();
+            pipelineDesc.cullMode = VK_CULL_MODE_NONE; // Disable culling for fullscreen quad
+            // pipelineDesc.depthTest = false;                  // Disable depth test
+            // pipelineDesc.depthWrite = false;                 // Don't write to depth buffer
+
+            compositePipeline = new Pipeline(context.vulkanDevice->logicalDevice);
+            compositePipeline->build(pipelineDesc);
+        }
+    }
+
+    void prepareDescriptors()
+    {
+        // Model Descriptor Sets
+        {
+            std::vector<DescriptorBinding> bindings;
+            bindings.push_back({0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT});
+            bindings.push_back({1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (uint32_t)texImages.size(), VK_SHADER_STAGE_FRAGMENT_BIT});
+            bindings.push_back({2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT});
+
+            std::vector<std::vector<DescriptorResource>> resources(MAX_FRAMES_IN_FLIGHT);
+            for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+            {
+                // uniform buffer
+                DescriptorResource bufferRes{};
+                bufferRes.descBinding = bindings[0];
+                bufferRes.bufferInfo.buffer = uniformBuffers[i]->handle();
+                bufferRes.bufferInfo.offset = 0;
+                bufferRes.bufferInfo.range = sizeof(uniformBufferObject);
+                resources[i].push_back(bufferRes);
+
+                // combined image sampler
+                DescriptorResource samplerRes{};
+                samplerRes.descBinding = bindings[1];
+                for (Image *texImage : texImages)
+                {
+                    VkDescriptorImageInfo imageInfo{};
+                    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    imageInfo.imageView = texImage->getImageView();
+                    imageInfo.sampler = texImage->getSampler();
+                    samplerRes.imageInfos.push_back(imageInfo);
+                }
+                resources[i].push_back(samplerRes);
+
+                // Light UBO
+                DescriptorResource lightUBOres{};
+                lightUBOres.descBinding = bindings[2];
+                lightUBOres.bufferInfo.buffer = lightUniformBuffers[i]->handle();
+                lightUBOres.bufferInfo.offset = 0;
+                lightUBOres.bufferInfo.range = sizeof(lightUBO);
+                resources[i].push_back(lightUBOres);
+            }
+
+            modelDescManager = new DescriptorManager(context);
+            modelDescManager->createDescriptorSetLayout(bindings);
+            modelDescManager->createDescriptorPool(MAX_FRAMES_IN_FLIGHT, bindings);
+            modelDescManager->createDescriptorSets(MAX_FRAMES_IN_FLIGHT, resources);
+        }
+
+        // CubeMaps Descriptor set
+        {
+            std::vector<DescriptorBinding> bindings;
+            bindings.push_back({0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT});
+            bindings.push_back({1,
+                                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+                                VK_SHADER_STAGE_FRAGMENT_BIT});
+
+            std::vector<std::vector<DescriptorResource>> resources(MAX_FRAMES_IN_FLIGHT);
+            for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+            {
+                // uniform buffer
+                DescriptorResource bufferRes{};
+                bufferRes.descBinding = bindings[0];
+                bufferRes.bufferInfo.buffer = uniformBuffers[i]->handle();
+                bufferRes.bufferInfo.offset = 0;
+                bufferRes.bufferInfo.range = sizeof(uniformBufferObject);
+                resources[i].push_back(bufferRes);
+
+                // SkyBox cubeMap
+                DescriptorResource samplerRes{};
+                samplerRes.descBinding = bindings[1];
+                {
+                    VkDescriptorImageInfo imageInfo{};
+                    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    imageInfo.imageView = cubeMapImage->getImageView();
+                    imageInfo.sampler = cubeMapImage->getSampler();
+                    samplerRes.imageInfos.push_back(imageInfo);
+                }
+                resources[i].push_back(samplerRes);
+            }
+
+            cubeMapDescriptor = new DescriptorManager(context);
+            cubeMapDescriptor->createDescriptorSetLayout(bindings);
+            cubeMapDescriptor->createDescriptorPool(MAX_FRAMES_IN_FLIGHT, bindings);
+            cubeMapDescriptor->createDescriptorSets(MAX_FRAMES_IN_FLIGHT, resources);
+        }
+
+        // Glow pass Descriptor
+        {
+            std::vector<DescriptorBinding> bindings;
+            bindings.push_back({0,
+                                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+                                VK_SHADER_STAGE_FRAGMENT_BIT});
+
+            std::vector<std::vector<DescriptorResource>> resources(MAX_FRAMES_IN_FLIGHT);
+            for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+            {
+                // Scene image sampler
+                DescriptorResource samplerRes{};
+                samplerRes.descBinding = bindings[0];
+                {
+                    VkDescriptorImageInfo imageInfo{};
+                    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    imageInfo.imageView = offScreenPass->frameBuffers[0]->color->getImageView(); // getImageView();
+                    imageInfo.sampler = offScreenPass->sampler;
+                    samplerRes.imageInfos.push_back(imageInfo);
+                }
+                resources[i].push_back(samplerRes);
+            }
+
+            glowDescriptor = new DescriptorManager(context);
+            glowDescriptor->createDescriptorSetLayout(bindings);
+            glowDescriptor->createDescriptorPool(MAX_FRAMES_IN_FLIGHT, bindings);
+            glowDescriptor->createDescriptorSets(MAX_FRAMES_IN_FLIGHT, resources);
+        }
+
+        // Vertical Blur Descriptor
+        {
+            std::vector<DescriptorBinding> bindings;
+            bindings.push_back({0,
+                                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+                                VK_SHADER_STAGE_FRAGMENT_BIT});
+
+            std::vector<std::vector<DescriptorResource>> resources(MAX_FRAMES_IN_FLIGHT);
+            for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+            {
+                // Scene image sampler
+                DescriptorResource samplerRes{};
+                samplerRes.descBinding = bindings[0];
+                {
+                    VkDescriptorImageInfo imageInfo{};
+                    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    imageInfo.imageView = offScreenPass->frameBuffers[1]->color->getImageView(); // getImageView();
+                    imageInfo.sampler = offScreenPass->sampler;
+                    samplerRes.imageInfos.push_back(imageInfo);
+                }
+                resources[i].push_back(samplerRes);
+            }
+
+            vertBlurDescriptor = new DescriptorManager(context);
+            vertBlurDescriptor->createDescriptorSetLayout(bindings);
+            vertBlurDescriptor->createDescriptorPool(MAX_FRAMES_IN_FLIGHT, bindings);
+            vertBlurDescriptor->createDescriptorSets(MAX_FRAMES_IN_FLIGHT, resources);
+        }
+
+        // Horizontal Blur Descriptor
+        {
+            std::vector<DescriptorBinding> bindings;
+            bindings.push_back({0,
+                                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+                                VK_SHADER_STAGE_FRAGMENT_BIT});
+
+            std::vector<std::vector<DescriptorResource>> resources(MAX_FRAMES_IN_FLIGHT);
+            for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+            {
+                // Scene image sampler
+                DescriptorResource samplerRes{};
+                samplerRes.descBinding = bindings[0];
+                {
+                    VkDescriptorImageInfo imageInfo{};
+                    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    imageInfo.imageView = offScreenPass->frameBuffers[2]->color->getImageView(); // getImageView();
+                    imageInfo.sampler = offScreenPass->sampler;
+                    samplerRes.imageInfos.push_back(imageInfo);
+                }
+                resources[i].push_back(samplerRes);
+            }
+
+            horiBlurDescriptor = new DescriptorManager(context);
+            horiBlurDescriptor->createDescriptorSetLayout(bindings);
+            horiBlurDescriptor->createDescriptorPool(MAX_FRAMES_IN_FLIGHT, bindings);
+            horiBlurDescriptor->createDescriptorSets(MAX_FRAMES_IN_FLIGHT, resources);
+        }
+
+        // composite pass Descriptor
+        {
+            std::vector<DescriptorBinding> bindings;
+            bindings.push_back({0,
+                                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+                                VK_SHADER_STAGE_FRAGMENT_BIT});
+            bindings.push_back({1,
+                                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+                                VK_SHADER_STAGE_FRAGMENT_BIT});
+
+            std::vector<std::vector<DescriptorResource>> resources(MAX_FRAMES_IN_FLIGHT);
+            for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+            {
+                // Scene image sampler
+                DescriptorResource samplerRes0{};
+                samplerRes0.descBinding = bindings[0];
+                {
+                    VkDescriptorImageInfo imageInfo{};
+                    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    imageInfo.imageView = offScreenPass->frameBuffers[0]->color->getImageView(); // getImageView();
+                    imageInfo.sampler = offScreenPass->sampler;
+                    samplerRes0.imageInfos.push_back(imageInfo);
+                }
+                resources[i].push_back(samplerRes0);
+
+                // Bloom image sampler
+                DescriptorResource samplerRes1{};
+                samplerRes1.descBinding = bindings[1];
+                {
+                    VkDescriptorImageInfo imageInfo{};
+                    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    imageInfo.imageView = offScreenPass->frameBuffers[1]->color->getImageView(); // getImageView();
+                    imageInfo.sampler = offScreenPass->sampler;
+                    samplerRes1.imageInfos.push_back(imageInfo);
+                }
+                resources[i].push_back(samplerRes1);
+            }
+
+            compositeDescriptor = new DescriptorManager(context);
+            compositeDescriptor->createDescriptorSetLayout(bindings);
+            compositeDescriptor->createDescriptorPool(MAX_FRAMES_IN_FLIGHT, bindings);
+            compositeDescriptor->createDescriptorSets(MAX_FRAMES_IN_FLIGHT, resources);
+        }
     }
 
     virtual void prepare() override
     {
         camera = new Camera(glm::vec3(0.0f, 0.0f, 7.0f));
+        prepareOffScreen();
 
-        prepareRenderpass();
-        prepareFramebuffer();
+        // Create ImGui render pass (loads existing content, doesn't clear)
+        /* {
+            VkAttachmentDescription colorAttachment{};
+            colorAttachment.format = vulkanSwapChain.colorFormat;
+            colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+            colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; // LOAD instead of CLEAR to preserve blit content
+            colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            colorAttachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-        // 3D viking model
+            VkAttachmentReference colorAttachmentRef{};
+            colorAttachmentRef.attachment = 0;
+            colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+            VkSubpassDescription subpass{};
+            subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+            subpass.colorAttachmentCount = 1;
+            subpass.pColorAttachments = &colorAttachmentRef;
+
+            VkSubpassDependency dependency{};
+            dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+            dependency.dstSubpass = 0;
+            dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            dependency.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            dependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+            VkRenderPassCreateInfo renderPassInfo{};
+            renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+            renderPassInfo.attachmentCount = 1;
+            renderPassInfo.pAttachments = &colorAttachment;
+            renderPassInfo.subpassCount = 1;
+            renderPassInfo.pSubpasses = &subpass;
+            renderPassInfo.dependencyCount = 1;
+            renderPassInfo.pDependencies = &dependency;
+
+            if (vkCreateRenderPass(context.device, &renderPassInfo, nullptr, &imguiRenderPass) != VK_SUCCESS)
+                throw std::runtime_error("failed to create ImGui render pass!");
+        } */
+
+        // 3D ferrari model
         c_model = new Model();
+
         {
             c_model->loadModel("D:/Dev/Graphics Proj/Engine/res/models/ferrari/scene.obj");
             // indicesSize = c_model->getIndices().size();
@@ -226,6 +907,25 @@ public:
                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
                 skyboxVertexBuffer->copyBuffer(stagingBuffer.handle(), (sizeof(c_model->skyBoxVertices[0]) * c_model->skyBoxVertices.size()), cmdBuffer->getCmdPool());
             }
+
+            // fullscreenQuad Vertex Buffer alloc
+            {
+                Buffer stagingBuffer{};
+                stagingBuffer.create(
+                    context,
+                    (sizeof(fullscreenQuadVertices[0]) * fullscreenQuadVertices.size()), 0,
+                    VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+                stagingBuffer.upload(fullscreenQuadVertices.data(), false);
+
+                fullscreenQuadVertexBuffer = new Buffer();
+                fullscreenQuadVertexBuffer->create(
+                    context,
+                    (sizeof(fullscreenQuadVertices[0]) * fullscreenQuadVertices.size()), 0,
+                    VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                fullscreenQuadVertexBuffer->copyBuffer(stagingBuffer.handle(), (sizeof(fullscreenQuadVertices[0]) * fullscreenQuadVertices.size()), cmdBuffer->getCmdPool());
+            }
         }
 
         // MVP Uniform buffer Alloc
@@ -248,7 +948,7 @@ public:
             }
         }
 
-        // Texture Image creation
+        // Model Texture Image creation
         {
             // loading model textures
             int i = 0;
@@ -292,9 +992,7 @@ public:
 
                 Image *texImage = new Image(&context);
                 texImage->createImage(texWidth, texHeight,
-                                      VK_IMAGE_LAYOUT_UNDEFINED,
                                       imageFormat,
-                                      VK_IMAGE_TILING_OPTIMAL,
                                       VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                                       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
@@ -374,9 +1072,7 @@ public:
 
             cubeMapImage = new Image(&context);
             cubeMapImage->createImage(texWidth, texHeight,
-                                      VK_IMAGE_LAYOUT_UNDEFINED,
                                       VK_FORMAT_R8G8B8A8_UNORM,
-                                      VK_IMAGE_TILING_OPTIMAL,
                                       VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                                       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                                       6,
@@ -403,7 +1099,7 @@ public:
             }
             cubeMapImage->copyBuffer(stagingBuffer.handle(),
                                      cmdBuffer->getCmdPool(),
-                                     copyRegions.data(), copyRegions.size());
+                                     copyRegions.data(), static_cast<uint32_t>(copyRegions.size()));
             cubeMapImage->transitionImageLayout(cmdBuffer->getCmdPool(),
                                                 VK_FORMAT_R8G8B8A8_UNORM,
                                                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -416,153 +1112,9 @@ public:
             cubeMapImage->createImageSampler();
         }
 
-        // Model DescriptorSets creation
-        {
-            std::vector<DescriptorBinding> bindings;
-            bindings.push_back({0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT});
-            bindings.push_back({1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (uint32_t)texImages.size(), VK_SHADER_STAGE_FRAGMENT_BIT});
-            bindings.push_back({2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT});
+        prepareDescriptors();
 
-            std::vector<std::vector<DescriptorResource>> resources(MAX_FRAMES_IN_FLIGHT);
-            for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-            {
-                // uniform buffer
-                DescriptorResource bufferRes{};
-                bufferRes.descBinding = bindings[0];
-                bufferRes.bufferInfo.buffer = uniformBuffers[i]->handle();
-                bufferRes.bufferInfo.offset = 0;
-                bufferRes.bufferInfo.range = sizeof(uniformBufferObject);
-                resources[i].push_back(bufferRes);
-
-                // combined image sampler
-                DescriptorResource samplerRes{};
-                samplerRes.descBinding = bindings[1];
-                for (Image *texImage : texImages)
-                {
-                    VkDescriptorImageInfo imageInfo{};
-                    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                    imageInfo.imageView = texImage->getImageView();
-                    imageInfo.sampler = texImage->getSampler();
-                    samplerRes.imageInfos.push_back(imageInfo);
-                }
-                resources[i].push_back(samplerRes);
-
-                // Light UBO
-                DescriptorResource lightUBOres{};
-                lightUBOres.descBinding = bindings[2];
-                lightUBOres.bufferInfo.buffer = lightUniformBuffers[i]->handle();
-                lightUBOres.bufferInfo.offset = 0;
-                lightUBOres.bufferInfo.range = sizeof(lightUBO);
-                resources[i].push_back(lightUBOres);
-            }
-
-            descManager = new DescriptorManager(context);
-            descManager->createDescriptorSetLayout(bindings);
-            descManager->createDescriptorPool(MAX_FRAMES_IN_FLIGHT, bindings);
-            descManager->createDescriptorSets(MAX_FRAMES_IN_FLIGHT, resources);
-        }
-
-        // CubeMaps Descriptor set
-        {
-            std::vector<DescriptorBinding> bindings;
-            bindings.push_back({0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT});
-            bindings.push_back({1,
-                                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
-                                VK_SHADER_STAGE_FRAGMENT_BIT});
-
-            std::vector<std::vector<DescriptorResource>> resources(MAX_FRAMES_IN_FLIGHT);
-            for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-            {
-                // uniform buffer
-                DescriptorResource bufferRes{};
-                bufferRes.descBinding = bindings[0];
-                bufferRes.bufferInfo.buffer = uniformBuffers[i]->handle();
-                bufferRes.bufferInfo.offset = 0;
-                bufferRes.bufferInfo.range = sizeof(uniformBufferObject);
-                resources[i].push_back(bufferRes);
-
-                // SkyBox cubeMap
-                DescriptorResource samplerRes{};
-                samplerRes.descBinding = bindings[1];
-                {
-                    VkDescriptorImageInfo imageInfo{};
-                    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                    imageInfo.imageView = cubeMapImage->getImageView();
-                    imageInfo.sampler = cubeMapImage->getSampler();
-                    samplerRes.imageInfos.push_back(imageInfo);
-                }
-                resources[i].push_back(samplerRes);
-            }
-
-            cubeMapDescriptor = new DescriptorManager(context);
-            cubeMapDescriptor->createDescriptorSetLayout(bindings);
-            cubeMapDescriptor->createDescriptorPool(MAX_FRAMES_IN_FLIGHT, bindings);
-            cubeMapDescriptor->createDescriptorSets(MAX_FRAMES_IN_FLIGHT, resources);
-        }
-
-        // Graphics Pipeline
-        {
-            VkDescriptorSetLayout setLayout = descManager->getDescSetLayout();
-
-            VkPushConstantRange pushRange{};
-            pushRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-            pushRange.offset = 0;
-            pushRange.size = sizeof(CommandBuffer::DrawData);
-
-            // Pipeline layout: to pass on Uniform buffer and push Constant data to shaders
-            VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
-            pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-            pipelineLayoutInfo.setLayoutCount = 1;
-            pipelineLayoutInfo.pSetLayouts = &setLayout;
-            pipelineLayoutInfo.pushConstantRangeCount = 1;
-            pipelineLayoutInfo.pPushConstantRanges = &pushRange;
-            if (vkCreatePipelineLayout(context.device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS)
-            {
-                throw std::runtime_error("failed to create pipeline layout!");
-            }
-
-            PipelineDesc pipelineDesc{};
-            pipelineDesc.vertShaderLoc = "D:/Dev/Graphics Proj/Engine/res/shaders/vert.spv";
-            pipelineDesc.fragShaderLoc = "D:/Dev/Graphics Proj/Engine/res/shaders/frag.spv";
-            pipelineDesc.layout = pipelineLayout;
-            pipelineDesc.renderPass = renderPass->renderPass;
-            pipelineDesc.vertexBinding = Model::Vertex::getBindingDescription();
-            pipelineDesc.vertexAttrib = Model::Vertex::getAttributeDescriptions();
-
-            pipeline = new Pipeline(context.vulkanDevice->logicalDevice);
-            pipeline->build(pipelineDesc);
-            // pipeline->initPipeline(descManager->getDescSetLayout(), &renderPass->renderPass, vulkanSwapChain.swapchainExtent);
-        }
-
-        // CubeMap Graphics Pipeline
-        {
-            VkDescriptorSetLayout setLayout = cubeMapDescriptor->getDescSetLayout();
-
-            // Pipeline layout: to pass on Uniform buffer and push Constant data to shaders
-            VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
-            pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-            pipelineLayoutInfo.setLayoutCount = 1;
-            pipelineLayoutInfo.pSetLayouts = &setLayout;
-            pipelineLayoutInfo.pushConstantRangeCount = 0;
-            pipelineLayoutInfo.pPushConstantRanges = nullptr;
-            if (vkCreatePipelineLayout(context.device, &pipelineLayoutInfo, nullptr, &cubeMapPipelineLayout) != VK_SUCCESS)
-            {
-                throw std::runtime_error("failed to create pipeline layout!");
-            }
-
-            PipelineDesc pipelineDesc{};
-            pipelineDesc.vertShaderLoc = "D:/Dev/Graphics Proj/Engine/res/shaders/cubeMapVert.spv";
-            pipelineDesc.fragShaderLoc = "D:/Dev/Graphics Proj/Engine/res/shaders/cubeMapFrag.spv";
-            pipelineDesc.layout = cubeMapPipelineLayout;
-            pipelineDesc.renderPass = renderPass->renderPass;
-            pipelineDesc.vertexBinding = Model::skyBoxVertex::getBindingDesc();
-            pipelineDesc.vertexAttrib = Model::skyBoxVertex::getAttributeDesc();
-            pipelineDesc.depthCompare = VK_COMPARE_OP_LESS_OR_EQUAL; // Skybox at far plane
-            pipelineDesc.depthWrite = false;                         // Don't write to depth buffer
-
-            cubeMapPipeline = new Pipeline(context.vulkanDevice->logicalDevice);
-            cubeMapPipeline->build(pipelineDesc);
-        }
+        preparePipelines();
     }
 
     virtual void onUIRender() override
@@ -578,8 +1130,29 @@ public:
 
         ImGui::Begin("Rendering options"); // Create a window called "Hello, world!" and append into it.
 
-        ImGui::SliderFloat("float", &f, 0.0f, 1.0f);             // Edit 1 float using a slider from 0.0f to 1.0f
-        ImGui::ColorEdit3("clear color", (float *)&clear_color); // Edit 3 floats representing a color
+        ImGui::SliderFloat("Luminance", &glowData.lumThreshold, 0.0f, 1.0f); // Edit 1 float using a slider from 0.0f to 1.0f
+        ImGui::ColorEdit3("clear color", (float *)&clear_color);             // Edit 3 floats representing a color
+
+        ImGui::BeginGroup();
+        ImGui::Checkbox("ToneMapping", (bool *)&compData.toneMapping);
+        ImGui::SameLine();
+        ImGui::Checkbox("Gamma", (bool *)&compData.gamma);
+        ImGui::EndGroup();
+
+        if (ImGui::BeginCombo("Render Target", items[selected_item].c_str()))
+        {
+            for (uint32_t i = 0; i < items.size(); i++)
+            {
+                const bool is_selected = (selected_item == i);
+
+                if (ImGui::Selectable(items[i].c_str(), is_selected))
+                    selected_item = i;
+
+                if (is_selected)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
 
         ImGui::BeginGroup();
         ImGui::Text("Light Data");
@@ -591,7 +1164,6 @@ public:
 
         if (ImGui::Button("Button")) // Buttons return true when clicked (most widgets return true when edited/activated)
             counter++;
-        ImGui::SameLine();
         ImGui::Text("counter = %d", counter);
 
         ImGui::End();
@@ -604,14 +1176,106 @@ public:
         updateUniformBuffer(ubo);
     }
 
+    void bitBlit(VkImage blitImage, int imgInd)
+    {
+        // Barrier 1: Transition offscreen from SHADER_READ_ONLY to TRANSFER_SRC
+        VkImageMemoryBarrier srcBarrier{};
+        srcBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        srcBarrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        srcBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        srcBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        srcBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        srcBarrier.image = blitImage;
+        srcBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        srcBarrier.subresourceRange.baseMipLevel = 0;
+        srcBarrier.subresourceRange.levelCount = 1;
+        srcBarrier.subresourceRange.baseArrayLayer = 0;
+        srcBarrier.subresourceRange.layerCount = 1;
+        srcBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        srcBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+        vkCmdPipelineBarrier(cmdBuffer->commandBuffers[currentFrame],
+                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             0, 0, nullptr, 0, nullptr, 1, &srcBarrier);
+
+        // Barrier 2: Transition swapchain from UNDEFINED to TRANSFER_DST
+        VkImageMemoryBarrier dstBarrier{};
+        dstBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        dstBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        dstBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        dstBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        dstBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        dstBarrier.image = vulkanSwapChain.getSwapChainImages()[imgInd]->getImage();
+        dstBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        dstBarrier.subresourceRange.baseMipLevel = 0;
+        dstBarrier.subresourceRange.levelCount = 1;
+        dstBarrier.subresourceRange.baseArrayLayer = 0;
+        dstBarrier.subresourceRange.layerCount = 1;
+        dstBarrier.srcAccessMask = 0;
+        dstBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+        vkCmdPipelineBarrier(cmdBuffer->commandBuffers[currentFrame],
+                             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             0, 0, nullptr, 0, nullptr, 1, &dstBarrier);
+
+        // Setup blit region - copy full extent
+        VkImageBlit region{};
+        region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.srcSubresource.mipLevel = 0;
+        region.srcSubresource.baseArrayLayer = 0;
+        region.srcSubresource.layerCount = 1;
+        region.srcOffsets[0] = {0, 0, 0};
+        region.srcOffsets[1] = {(int32_t)vulkanSwapChain.swapchainExtent.width,
+                                (int32_t)vulkanSwapChain.swapchainExtent.height, 1};
+
+        region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.dstSubresource.mipLevel = 0;
+        region.dstSubresource.baseArrayLayer = 0;
+        region.dstSubresource.layerCount = 1;
+        region.dstOffsets[0] = {0, 0, 0};
+        region.dstOffsets[1] = {(int32_t)vulkanSwapChain.swapchainExtent.width,
+                                (int32_t)vulkanSwapChain.swapchainExtent.height, 1};
+
+        // Blit offscreen to swapchain
+        vkCmdBlitImage(cmdBuffer->commandBuffers[currentFrame],
+                       blitImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                       vulkanSwapChain.getSwapChainImages()[imgInd]->getImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                       1, &region, VK_FILTER_LINEAR);
+
+        // Barrier 3: Transition swapchain from TRANSFER_DST to PRESENT_SRC
+        VkImageMemoryBarrier presentBarrier{};
+        presentBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        presentBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        presentBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        presentBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        presentBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        presentBarrier.image = vulkanSwapChain.getSwapChainImages()[imgInd]->getImage();
+        presentBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        presentBarrier.subresourceRange.baseMipLevel = 0;
+        presentBarrier.subresourceRange.levelCount = 1;
+        presentBarrier.subresourceRange.baseArrayLayer = 0;
+        presentBarrier.subresourceRange.layerCount = 1;
+        presentBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        presentBarrier.dstAccessMask = 0;
+
+        vkCmdPipelineBarrier(cmdBuffer->commandBuffers[currentFrame],
+                             VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                             0, 0, nullptr, 0, nullptr, 1, &presentBarrier);
+    }
+
     virtual void run(uint32_t imgInd) override
     {
-        cmdBuffer->beginCmd(currentFrame, renderPass->renderPass, vulkanSwapChain.swapchainFramebuffers[imgInd],
+        /* cmdBuffer->beginCmd(currentFrame, renderPass->renderPass, vulkanSwapChain.swapchainFramebuffers[imgInd],
                             vulkanSwapChain.swapchainExtent,
-                            {1.0f, 1.0f, 1.0f, 1.00f});
+                            {1.0f, 1.0f, 1.0f, 1.00f}); */
+        cmdBuffer->beginCmdbuffer(currentFrame);
 
         VkBuffer vertexBuffers[] = {vertexBuffer->handle()};
         VkBuffer skyboxVertexBuffers[] = {skyboxVertexBuffer->handle()};
+        VkBuffer fullscreenQuadVertexBuffers[] = {fullscreenQuadVertexBuffer->handle()};
         VkDeviceSize offsets[] = {0};
 
         VkViewport viewport{};
@@ -633,37 +1297,127 @@ public:
             uint32_t texIndex;
         };
 
-        // Model pbr rendering
+        // 1st Render Pass to render the scene
+        cmdBuffer->beginRenderPass(currentFrame, offScreenPass->renderPass,
+                                   offScreenPass->frameBuffers[0]->frameBuffer,
+                                   vulkanSwapChain.swapchainExtent,
+                                   {1.0f, 1.0f, 1.0f, 1.0f});
         {
-            vkCmdBindPipeline(cmdBuffer->commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->pipeline);
-            vkCmdBindVertexBuffers(cmdBuffer->commandBuffers[currentFrame], 0, 1, vertexBuffers, offsets);
-            vkCmdBindIndexBuffer(cmdBuffer->commandBuffers[currentFrame], indexBuffer->handle(), 0, VK_INDEX_TYPE_UINT32);
-            vkCmdBindDescriptorSets(cmdBuffer->commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                    pipeline->getPipelineLayout(), 0, 1, &descManager->handle()[currentFrame], 0, nullptr);
-            for (const Model::Submesh &sm : c_model->getSubmeshes())
+            // Model pbr rendering
             {
-                DrawData data{};
-                data.texIndex = matIndTexInd.at(sm.materialIndex);
+                vkCmdBindPipeline(cmdBuffer->commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, modelPipeline->pipeline);
+                vkCmdBindVertexBuffers(cmdBuffer->commandBuffers[currentFrame], 0, 1, vertexBuffers, offsets);
+                vkCmdBindIndexBuffer(cmdBuffer->commandBuffers[currentFrame], indexBuffer->handle(), 0, VK_INDEX_TYPE_UINT32);
+                vkCmdBindDescriptorSets(cmdBuffer->commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                        modelPipeline->getPipelineLayout(), 0, 1, &modelDescManager->handle()[currentFrame], 0, nullptr);
+                for (const Model::Submesh &sm : c_model->getSubmeshes())
+                {
+                    DrawData data{};
+                    data.texIndex = matIndTexInd.at(sm.materialIndex);
+                    vkCmdPushConstants(cmdBuffer->commandBuffers[currentFrame], modelPipeline->getPipelineLayout(), VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(DrawData), &data);
+                    vkCmdDrawIndexed(cmdBuffer->commandBuffers[currentFrame], sm.indexCount, 1, sm.firstIndex, 0, 0);
+                }
+            }
 
-                vkCmdPushConstants(cmdBuffer->commandBuffers[currentFrame], pipeline->getPipelineLayout(), VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(DrawData), &data);
-                vkCmdDrawIndexed(cmdBuffer->commandBuffers[currentFrame], sm.indexCount, 1, sm.firstIndex, 0, 0);
+            // skybox rendering - render LAST so it doesn't render unnecessary parts of the scene
+            {
+                vkCmdBindPipeline(cmdBuffer->commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, cubeMapPipeline->pipeline);
+                vkCmdBindVertexBuffers(cmdBuffer->commandBuffers[currentFrame], 0, 1, skyboxVertexBuffers, offsets);
+                vkCmdBindDescriptorSets(cmdBuffer->commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                        cubeMapPipeline->getPipelineLayout(), 0, 1, &cubeMapDescriptor->handle()[currentFrame], 0, nullptr);
+                vkCmdDraw(cmdBuffer->commandBuffers[currentFrame], static_cast<uint32_t>(c_model->skyBoxVertices.size()), 1, 0, 0);
             }
         }
+        cmdBuffer->endRenderPass(currentFrame);
 
-        // skybox rendering - render LAST so it appears behind everything
+        // 2nd Render Pass for GlowPass
+        if (selected_item != 0)
         {
-            vkCmdBindPipeline(cmdBuffer->commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, cubeMapPipeline->pipeline);
-            vkCmdBindVertexBuffers(cmdBuffer->commandBuffers[currentFrame], 0, 1, skyboxVertexBuffers, offsets);
-            vkCmdBindDescriptorSets(cmdBuffer->commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                    cubeMapPipeline->getPipelineLayout(), 0, 1, &cubeMapDescriptor->handle()[currentFrame], 0, nullptr);
-            vkCmdDraw(cmdBuffer->commandBuffers[currentFrame], static_cast<uint32_t>(c_model->skyBoxVertices.size()), 1, 0, 0);
+            cmdBuffer->beginRenderPass(currentFrame, offScreenPass->renderPass,
+                                       offScreenPass->frameBuffers[1]->frameBuffer,
+                                       vulkanSwapChain.swapchainExtent,
+                                       {1.0f, 1.0f, 1.0f, 1.0f});
+            {
+                vkCmdBindPipeline(cmdBuffer->commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, glowPipeline->pipeline);
+                vkCmdBindVertexBuffers(cmdBuffer->commandBuffers[currentFrame], 0, 1, fullscreenQuadVertexBuffers, offsets);
+                vkCmdBindDescriptorSets(cmdBuffer->commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                        glowPipeline->getPipelineLayout(), 0, 1, &glowDescriptor->handle()[currentFrame], 0, nullptr);
+                vkCmdPushConstants(cmdBuffer->commandBuffers[currentFrame], glowPipeline->getPipelineLayout(), VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(glowData), &glowData);
+
+                vkCmdDraw(cmdBuffer->commandBuffers[currentFrame], static_cast<uint32_t>(fullscreenQuadVertices.size()), 1, 0, 0);
+            }
+
+            cmdBuffer->endRenderPass(currentFrame);
         }
 
+        // Third Render Pass for VerticalBlur
+        if (selected_item != 0 && selected_item != 1)
+        {
+            cmdBuffer->beginRenderPass(currentFrame, offScreenPass->renderPass,
+                                       offScreenPass->frameBuffers[2]->frameBuffer, // vulkanSwapChain.swapchainFramebuffers[imgInd],
+                                       vulkanSwapChain.swapchainExtent,
+                                       {1.0f, 1.0f, 1.0f, 1.0f});
+            {
+                vkCmdBindPipeline(cmdBuffer->commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, vertBlurPipeline->pipeline);
+                vkCmdBindVertexBuffers(cmdBuffer->commandBuffers[currentFrame], 0, 1, fullscreenQuadVertexBuffers, offsets);
+                vkCmdBindDescriptorSets(cmdBuffer->commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                        vertBlurPipeline->getPipelineLayout(), 0, 1, &vertBlurDescriptor->handle()[currentFrame], 0, nullptr);
+                vkCmdDraw(cmdBuffer->commandBuffers[currentFrame], static_cast<uint32_t>(fullscreenQuadVertices.size()), 1, 0, 0);
+            }
+            cmdBuffer->endRenderPass(currentFrame);
+        }
+
+        // Fourth Render Pass for HorizontalBlur
+        if (selected_item != 0 && selected_item != 1)
+        {
+            cmdBuffer->beginRenderPass(currentFrame, offScreenPass->renderPass,
+                                       offScreenPass->frameBuffers[1]->frameBuffer,
+                                       vulkanSwapChain.swapchainExtent,
+                                       {1.0f, 1.0f, 1.0f, 1.0f});
+            {
+                vkCmdBindPipeline(cmdBuffer->commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, horiBlurPipeline->pipeline);
+                vkCmdBindVertexBuffers(cmdBuffer->commandBuffers[currentFrame], 0, 1, fullscreenQuadVertexBuffers, offsets);
+                vkCmdBindDescriptorSets(cmdBuffer->commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                        horiBlurPipeline->getPipelineLayout(), 0, 1, &horiBlurDescriptor->handle()[currentFrame], 0, nullptr);
+                vkCmdDraw(cmdBuffer->commandBuffers[currentFrame], static_cast<uint32_t>(fullscreenQuadVertices.size()), 1, 0, 0);
+            }
+            cmdBuffer->endRenderPass(currentFrame);
+        }
+
+        // Fiveth Render Pass for compositePass
+        if (selected_item != 0 && selected_item != 1 && selected_item != 2)
+        {
+            cmdBuffer->beginRenderPass(currentFrame, renderPass->renderPass,
+                                       vulkanSwapChain.swapchainFramebuffers[imgInd],
+                                       vulkanSwapChain.swapchainExtent,
+                                       {1.0f, 1.0f, 1.0f, 1.0f});
+            {
+                vkCmdBindPipeline(cmdBuffer->commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, compositePipeline->pipeline);
+                vkCmdBindVertexBuffers(cmdBuffer->commandBuffers[currentFrame], 0, 1, fullscreenQuadVertexBuffers, offsets);
+                vkCmdBindDescriptorSets(cmdBuffer->commandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                        compositePipeline->getPipelineLayout(), 0, 1, &compositeDescriptor->handle()[currentFrame], 0, nullptr);
+                vkCmdPushConstants(cmdBuffer->commandBuffers[currentFrame], compositePipeline->getPipelineLayout(), VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(compData), &compData);
+                vkCmdDraw(cmdBuffer->commandBuffers[currentFrame], static_cast<uint32_t>(fullscreenQuadVertices.size()), 1, 0, 0);
+            }
+            cmdBuffer->endRenderPass(currentFrame);
+        }
+
+        // Bit Blitting with swapchain Image to Present on screen
+        if (selected_item == 0)
+            bitBlit(offScreenPass->frameBuffers[0]->color->getImage(), imgInd);
+        else if (selected_item == 1 || selected_item == 2)
+            bitBlit(offScreenPass->frameBuffers[1]->color->getImage(), imgInd);
+
+        // ImGui Render - use render pass that loads (preserves) existing content
+        cmdBuffer->beginRenderPass(currentFrame, renderPass->renderPass,
+                                   vulkanSwapChain.swapchainFramebuffers[imgInd],
+                                   vulkanSwapChain.swapchainExtent,
+                                   {0.0f, 0.0f, 0.0f, 0.0f}); // Clear color ignored (LOAD op used)
         ImGui_ImplVulkan_RenderDrawData(
             ImGui::GetDrawData(),
             cmdBuffer->commandBuffers[currentFrame]);
-
-        cmdBuffer->endCmd(currentFrame);
+        cmdBuffer->endRenderPass(currentFrame);
+        cmdBuffer->endCmdbuffer(currentFrame);
     }
 
     void updateUniformBuffer(const lightUBO &lightUBO)

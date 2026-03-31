@@ -14,11 +14,12 @@ Pipeline::Pipeline(const VkDevice &device) : device(device)
 
 Pipeline::~Pipeline()
 {
+    vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
     vkDestroyPipeline(device, pipeline, nullptr);
     // Note: pipelineLayout is owned by the caller, not by Pipeline
 }
 
-void Pipeline::build(const PipelineDesc& pipelineDesc)
+void Pipeline::build(const PipelineDesc pipelineDesc)
 {
     pipelineLayout = pipelineDesc.layout;
 

@@ -1,7 +1,13 @@
 #include "Image.h"
+#include "Context.h"
 
 Image::Image(const Context *ctx) : m_ctx(ctx)
 {
+}
+
+Image::Image(const Context *ctx, const VkImage &img) : m_ctx(ctx)
+{
+    this->m_image = img;
 }
 
 Image::~Image()
@@ -13,13 +19,13 @@ Image::~Image()
 }
 
 void Image::createImage(uint32_t width, uint32_t height,
-                        VkImageLayout initialLayout,
                         VkFormat format,
-                        VkImageTiling tiling,
                         VkImageUsageFlags usage,
                         VkMemoryPropertyFlags properties,
                         int arrayLayers,
-                        VkImageCreateFlags flags)
+                        VkImageCreateFlags flags,
+                        VkImageTiling tiling,
+                        VkImageLayout initialLayout)
 {
     m_width = width;
     m_height = height;
@@ -73,13 +79,15 @@ uint32_t Image::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags proper
     throw std::runtime_error("failed to find suitable memory type!");
 }
 
-void Image::createImageView(VkImageViewType viewType, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t layerCount)
+void Image::createImageView(VkImageViewType viewType, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t layerCount, VkImageViewCreateFlags flags)
 {
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewInfo.image = m_image;
     viewInfo.viewType = viewType;
     viewInfo.format = format;
+    viewInfo.flags = flags;
+    viewInfo.subresourceRange = {};
     viewInfo.subresourceRange.aspectMask = aspectFlags;
     viewInfo.subresourceRange.baseMipLevel = 0;
     viewInfo.subresourceRange.levelCount = 1;
@@ -240,6 +248,22 @@ void Image::transitionImageLayout(VkCommandPool cmdPool, VkFormat format, VkImag
 
         srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         dstStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    }
+    else if (oldLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+    {
+        barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+        srcStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    }
+    else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
+    {
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = 0;
+
+        srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        dstStage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
     }
     else
     {
